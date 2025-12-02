@@ -11,13 +11,24 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as ImagePicker from 'expo-image-picker';
+import { Video } from 'expo-av';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { getApps, initializeApp } from 'firebase/app';
-import { addDoc, collection, getFirestore, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
+import {
+  addDoc,
+  collection,
+  getFirestore,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 
 const Tab = createBottomTabNavigator();
 const { height: screenHeight } = Dimensions.get('window');
@@ -40,6 +51,9 @@ const fallbackFeed = [
     description: 'Palmer curls one from distance to seal the derby.',
     thumbnail:
       'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1600&q=80',
+    mediaUrl:
+      'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1600&q=80',
+    mediaType: 'image',
     uploader: '@blue_moon',
     likes: 2400,
     comments: 328,
@@ -51,6 +65,9 @@ const fallbackFeed = [
     description: 'Vinicius dances past two and squares for a simple tap-in.',
     thumbnail:
       'https://images.unsplash.com/photo-1521417531058-0fdfbdd7e9bf?auto=format&fit=crop&w=1600&q=80',
+    mediaUrl:
+      'https://images.unsplash.com/photo-1521417531058-0fdfbdd7e9bf?auto=format&fit=crop&w=1600&q=80',
+    mediaType: 'image',
     uploader: '@hala_madrid',
     likes: 6100,
     comments: 712,
@@ -62,6 +79,9 @@ const fallbackFeed = [
     description: 'La Masia youngster makes his debut with a nutmeg and an assist.',
     thumbnail:
       'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1600&q=80',
+    mediaUrl:
+      'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1600&q=80',
+    mediaType: 'image',
     uploader: '@culer_core',
     likes: 3100,
     comments: 451,
@@ -128,18 +148,47 @@ const firebaseConfig = {
   measurementId: 'G-Z0MFTE9WKR',
 };
 
+let cachedApp;
 let cachedDb;
-const getDb = () => {
-  if (cachedDb) return cachedDb;
+let cachedStorage;
+
+const getAppInstance = () => {
+  if (cachedApp) return cachedApp;
   const hasConfig = firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId;
   if (!hasConfig) return null;
 
   try {
     const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+    cachedApp = app;
+    return cachedApp;
+  } catch (error) {
+    console.warn('Firestore init failed', error);
+    return null;
+  }
+};
+
+const getDb = () => {
+  if (cachedDb) return cachedDb;
+  const app = getAppInstance();
+  if (!app) return null;
+  try {
     cachedDb = getFirestore(app);
     return cachedDb;
   } catch (error) {
-    console.warn('Firestore init failed', error);
+    console.warn('getDb failed', error);
+    return null;
+  }
+};
+
+const getStorageInstance = () => {
+  if (cachedStorage) return cachedStorage;
+  const app = getAppInstance();
+  if (!app) return null;
+  try {
+    cachedStorage = getStorage(app);
+    return cachedStorage;
+  } catch (error) {
+    console.warn('getStorage failed', error);
     return null;
   }
 };
@@ -215,6 +264,7 @@ const GamesScreen = () => (
 const FeedScreen = () => {
   const [feed, setFeed] = useState(fallbackFeed);
   const db = useMemo(() => getDb(), []);
+   const storage = useMemo(() => getStorageInstance(), []);
 
   useEffect(() => {
     if (!db) return undefined;
@@ -230,10 +280,12 @@ const FeedScreen = () => {
             title: data.title || 'Untitled clip',
             club: data.club || '',
             description: data.description || '',
+            mediaUrl: data.mediaUrl || data.thumbnail || data.imageUrl || '',
             thumbnail: data.thumbnail || data.imageUrl || '',
             uploader: data.uploader || '@footyfan',
             likes: data.likes || 0,
             comments: data.comments || 0,
+            mediaType: data.mediaType || 'image',
           };
         });
         if (items.length) setFeed(items);
@@ -242,17 +294,58 @@ const FeedScreen = () => {
     );
   }, [db]);
 
+  const uploadToStorage = useCallback(
+    async (uri, isVideo) => {
+      if (!storage) return null;
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const extGuess = uri.split('.').pop()?.split('?')[0] || (isVideo ? 'mp4' : 'jpg');
+      const storageRef = ref(storage, `uploads/${Date.now()}.${extGuess}`);
+      await uploadBytes(storageRef, blob);
+      return getDownloadURL(storageRef);
+    },
+    [storage]
+  );
+
   const handleAddClip = useCallback(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      console.warn('Media permission denied');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      quality: 0.8,
+    });
+
+    if (result.canceled) return;
+    const asset = result.assets?.[0];
+    const uri = asset?.uri || '';
+    const isVideo = asset?.type === 'video';
+
+    let uploadedUrl = uri;
+    if (db && storage && uri) {
+      try {
+        const cloudUrl = await uploadToStorage(uri, isVideo);
+        if (cloudUrl) uploadedUrl = cloudUrl;
+      } catch (error) {
+        console.warn('Upload failed, falling back locally', error);
+      }
+    }
+
     if (db) {
       try {
         await addDoc(collection(db, 'feed'), {
           title: 'New footy clip',
           club: '',
           description: 'Describe your moment...',
-          thumbnail: '',
+          mediaUrl: uploadedUrl,
+          thumbnail: uploadedUrl,
           uploader: '@you',
           likes: 0,
           comments: 0,
+          mediaType: isVideo ? 'video' : 'image',
           createdAt: serverTimestamp(),
         });
         return;
@@ -268,19 +361,30 @@ const FeedScreen = () => {
         title: 'New footy clip',
         club: '',
         description: 'Describe your moment...',
-        thumbnail: '',
+        mediaUrl: uploadedUrl,
+        thumbnail: uploadedUrl,
         uploader: '@you',
         likes: 0,
         comments: 0,
+        mediaType: isVideo ? 'video' : 'image',
       },
       ...prev,
     ]);
-  }, [db]);
+  }, [db, storage, uploadToStorage]);
 
   const renderItem = ({ item }) => (
     <View style={[styles.tiktokCard, { height: screenHeight - 140 }]}>
-      {item.thumbnail ? (
-        <Image source={{ uri: item.thumbnail }} style={styles.tiktokImage} />
+      {item.mediaType === 'video' && item.mediaUrl ? (
+        <Video
+          source={{ uri: item.mediaUrl }}
+          style={styles.tiktokImage}
+          resizeMode="cover"
+          shouldPlay
+          isLooping
+          isMuted={false}
+        />
+      ) : item.mediaUrl ? (
+        <Image source={{ uri: item.mediaUrl }} style={styles.tiktokImage} />
       ) : (
         <View style={[styles.tiktokImage, styles.imageFallback]}>
           <Ionicons name="image" size={28} color={theme.muted} />
