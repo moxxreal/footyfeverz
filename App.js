@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
   FlatList,
@@ -17,7 +17,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { getApps, initializeApp } from 'firebase/app';
-import { collection, getFirestore, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { addDoc, collection, getFirestore, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
 
 const Tab = createBottomTabNavigator();
 const { height: screenHeight } = Dimensions.get('window');
@@ -242,6 +242,41 @@ const FeedScreen = () => {
     );
   }, [db]);
 
+  const handleAddClip = useCallback(async () => {
+    if (db) {
+      try {
+        await addDoc(collection(db, 'feed'), {
+          title: 'New footy clip',
+          club: '',
+          description: 'Describe your moment...',
+          thumbnail: '',
+          uploader: '@you',
+          likes: 0,
+          comments: 0,
+          createdAt: serverTimestamp(),
+        });
+        return;
+      } catch (error) {
+        console.warn('Add clip failed, falling back locally', error);
+      }
+    }
+
+    // Local fallback so the button still feels responsive
+    setFeed((prev) => [
+      {
+        id: Date.now().toString(),
+        title: 'New footy clip',
+        club: '',
+        description: 'Describe your moment...',
+        thumbnail: '',
+        uploader: '@you',
+        likes: 0,
+        comments: 0,
+      },
+      ...prev,
+    ]);
+  }, [db]);
+
   const renderItem = ({ item }) => (
     <View style={[styles.tiktokCard, { height: screenHeight - 140 }]}>
       {item.thumbnail ? (
@@ -311,7 +346,7 @@ const FeedScreen = () => {
         decelerationRate="fast"
         contentContainerStyle={{ paddingBottom: 96 }}
       />
-      <TouchableOpacity style={styles.fab}>
+      <TouchableOpacity style={styles.fab} onPress={handleAddClip} activeOpacity={0.9}>
         <Ionicons name="add" size={28} color={theme.background} />
         <Text style={styles.fabText}>Add clip</Text>
       </TouchableOpacity>
