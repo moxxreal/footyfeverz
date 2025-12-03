@@ -670,7 +670,18 @@ const FeedScreen = ({ onReady }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.panelTitle}>Comments</Text>
-            <Text style={styles.muted}>Coming soon. Leave a quick note:</Text>
+            <View style={styles.commentList}>
+              {(commentModal.item?.commentsList || []).length === 0 ? (
+                <Text style={styles.muted}>No comments yet.</Text>
+              ) : (
+                commentModal.item.commentsList.map((c, idx) => (
+                  <View key={idx} style={styles.commentBubble}>
+                    <Text style={styles.commentAuthor}>{c.author || 'Anon'}</Text>
+                    <Text style={styles.commentText}>{c.text || ''}</Text>
+                  </View>
+                ))
+              )}
+            </View>
             <TextInput
               style={styles.commentInput}
               value={commentModal.text}
@@ -979,6 +990,25 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     gap: 10,
+  },
+  commentList: {
+    gap: 8,
+    maxHeight: 200,
+  },
+  commentBubble: {
+    backgroundColor: '#f3f4f6',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  commentAuthor: {
+    color: theme.secondary,
+    fontWeight: '700',
+  },
+  commentText: {
+    color: theme.text,
+    marginTop: 4,
   },
   commentInput: {
     minHeight: 80,
