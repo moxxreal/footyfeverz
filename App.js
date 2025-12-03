@@ -5,6 +5,8 @@ import {
   FlatList,
   Image,
   Alert,
+  Animated,
+  Easing,
   ScrollView,
   StyleSheet,
   Text,
@@ -35,6 +37,7 @@ const Tab = createBottomTabNavigator();
 const { height: screenHeight } = Dimensions.get('window');
 const tabBarHeight = 66;
 const cardHeight = Math.round(screenHeight - tabBarHeight);
+const logoSource = require('./assets/splash-icon.png');
 
 const theme = {
   background: '#f5f7fb',
@@ -265,8 +268,9 @@ const GamesScreen = () => (
   </SafeAreaView>
 );
 
-const FeedScreen = () => {
+const FeedScreen = ({ onReady }) => {
   const [feed, setFeed] = useState(fallbackFeed);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const db = useMemo(() => getDb(), []);
   const storage = useMemo(() => getStorageInstance(), []);
   const videoRefs = useRef({});
@@ -302,6 +306,7 @@ const FeedScreen = () => {
           };
         });
         if (items.length) setFeed(items);
+        setHasLoaded(true);
       },
       (error) => console.warn('Feed subscription failed', error)
     );
@@ -312,7 +317,11 @@ const FeedScreen = () => {
     if (!activeId || !feed.find((item) => item.id === activeId)) {
       setActiveId(feed[0].id);
     }
-  }, [feed, activeId]);
+    if (!hasLoaded) {
+      setHasLoaded(true);
+      onReady?.();
+    }
+  }, [feed, activeId, hasLoaded, onReady]);
 
   useEffect(() => {
     const currentKey = activeId;
@@ -587,6 +596,31 @@ const formatCount = (count) => {
 };
 
 export default function App() {
+  const [feedReady, setFeedReady] = useState(false);
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [pulse]);
+
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] });
+  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.65, 1] });
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -609,9 +643,16 @@ export default function App() {
           >
             <Tab.Screen name="Profile" component={ProfileScreen} />
             <Tab.Screen name="Games" component={GamesScreen} />
-            <Tab.Screen name="Feed" component={FeedScreen} />
+            <Tab.Screen name="Feed">
+              {() => <FeedScreen onReady={() => setFeedReady(true)} />}
+            </Tab.Screen>
             <Tab.Screen name="Forum" component={ForumScreen} />
           </Tab.Navigator>
+          {!feedReady && (
+            <View style={styles.loaderOverlay}>
+              <Animated.Image source={logoSource} style={[styles.loaderImage, { transform: [{ scale }], opacity }]} />
+            </View>
+          )}
         </NavigationContainer>
       </SafeAreaProvider>
     </GestureHandlerRootView>
@@ -969,6 +1010,22 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '800',
     fontSize: 14,
+  },
+  loaderOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  loaderImage: {
+    width: 180,
+    height: 180,
+    resizeMode: 'contain',
   },
   overlayText: {
     color: '#ffffff',
