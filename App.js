@@ -1,5 +1,5 @@
-import 'react-native-gesture-handler';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import 'react-native-gesture-handler';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   FlatList,
@@ -32,6 +32,7 @@ import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 
 const Tab = createBottomTabNavigator();
 const { height: screenHeight } = Dimensions.get('window');
+const cardHeight = Math.round(screenHeight - 140);
 
 const theme = {
   background: '#f5f7fb',
@@ -89,10 +90,10 @@ const fallbackFeed = [
 ];
 
 const fixtures = [
-  { id: 'g1', home: 'Real Madrid', away: 'Liverpool', time: 'Today · 20:00', venue: 'Bernabeu' },
-  { id: 'g2', home: 'Barcelona', away: 'PSG', time: 'Tomorrow · 21:00', venue: 'Olympic Stadium' },
-  { id: 'g3', home: 'Manchester United', away: 'Bayern', time: 'Sat · 17:30', venue: 'Old Trafford' },
-  { id: 'g4', home: 'Inter', away: 'Arsenal', time: 'Sun · 19:00', venue: 'San Siro' },
+  { id: 'g1', home: 'Real Madrid', away: 'Liverpool', time: 'Today ┬À 20:00', venue: 'Bernabeu' },
+  { id: 'g2', home: 'Barcelona', away: 'PSG', time: 'Tomorrow ┬À 21:00', venue: 'Olympic Stadium' },
+  { id: 'g3', home: 'Manchester United', away: 'Bayern', time: 'Sat ┬À 17:30', venue: 'Old Trafford' },
+  { id: 'g4', home: 'Inter', away: 'Arsenal', time: 'Sun ┬À 19:00', venue: 'San Siro' },
 ];
 
 const teams = [
@@ -201,7 +202,7 @@ const ProfileScreen = () => (
           <Text style={styles.avatarText}>FF</Text>
         </View>
         <Text style={styles.title}>Footy Fever</Text>
-        <Text style={styles.muted}>Ultra since 2005 · Global</Text>
+        <Text style={styles.muted}>Ultra since 2005 ┬À Global</Text>
         <View style={styles.badges}>
           <View style={[styles.badge, { backgroundColor: theme.highlight }]}>
             <Ionicons name="flash" size={16} color={theme.background} />
@@ -264,7 +265,16 @@ const GamesScreen = () => (
 const FeedScreen = () => {
   const [feed, setFeed] = useState(fallbackFeed);
   const db = useMemo(() => getDb(), []);
-   const storage = useMemo(() => getStorageInstance(), []);
+  const storage = useMemo(() => getStorageInstance(), []);
+  const videoRefs = useRef({});
+  const [activeId, setActiveId] = useState(fallbackFeed[0]?.id || null);
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    if (viewableItems?.length) {
+      const nextId = viewableItems[0]?.item?.id;
+      if (nextId) setActiveId(nextId);
+    }
+  }).current;
 
   useEffect(() => {
     if (!db) return undefined;
@@ -294,14 +304,39 @@ const FeedScreen = () => {
     );
   }, [db]);
 
+  useEffect(() => {
+    if (!feed.length) return;
+    if (!activeId || !feed.find((item) => item.id === activeId)) {
+      setActiveId(feed[0].id);
+    }
+  }, [feed, activeId]);
+
+  useEffect(() => {
+    const currentKey = activeId;
+    Object.entries(videoRefs.current).forEach(([id, ref]) => {
+      if (!ref) return;
+      if (id === currentKey) {
+        ref.playAsync?.();
+        ref.setStatusAsync?.({ shouldPlay: true, isMuted: false });
+      } else {
+        ref.pauseAsync?.();
+        ref.setStatusAsync?.({ shouldPlay: false, isMuted: true });
+      }
+    });
+  }, [activeId]);
+
   const uploadToStorage = useCallback(
     async (uri, isVideo) => {
       if (!storage) return null;
       const response = await fetch(uri);
       const blob = await response.blob();
       const extGuess = uri.split('.').pop()?.split('?')[0] || (isVideo ? 'mp4' : 'jpg');
-      const storageRef = ref(storage, `uploads/${Date.now()}.${extGuess}`);
-      await uploadBytes(storageRef, blob);
+      const storageRef = ref(
+        storage,
+        `uploads/${Date.now()}-${Math.floor(Math.random() * 10000)}.${extGuess}`
+      );
+      const contentType = isVideo ? 'video/mp4' : 'image/jpeg';
+      await uploadBytes(storageRef, blob, { contentType });
       return getDownloadURL(storageRef);
     },
     [storage]
@@ -317,12 +352,14 @@ const FeedScreen = () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       quality: 0.8,
+      videoMaxDuration: 30,
     });
 
     if (result.canceled) return;
     const asset = result.assets?.[0];
     const uri = asset?.uri || '';
     const isVideo = asset?.type === 'video';
+    const thumb = uri;
 
     let uploadedUrl = uri;
     if (db && storage && uri) {
@@ -341,7 +378,7 @@ const FeedScreen = () => {
           club: '',
           description: 'Describe your moment...',
           mediaUrl: uploadedUrl,
-          thumbnail: uploadedUrl,
+          thumbnail: thumb,
           uploader: '@you',
           likes: 0,
           comments: 0,
@@ -362,7 +399,7 @@ const FeedScreen = () => {
         club: '',
         description: 'Describe your moment...',
         mediaUrl: uploadedUrl,
-        thumbnail: uploadedUrl,
+        thumbnail: thumb,
         uploader: '@you',
         likes: 0,
         comments: 0,
@@ -372,71 +409,84 @@ const FeedScreen = () => {
     ]);
   }, [db, storage, uploadToStorage]);
 
-  const renderItem = ({ item }) => (
-    <View style={[styles.tiktokCard, { height: screenHeight - 140 }]}>
-      {item.mediaType === 'video' && item.mediaUrl ? (
-        <Video
-          source={{ uri: item.mediaUrl }}
-          style={styles.tiktokImage}
-          resizeMode="cover"
-          shouldPlay
-          isLooping
-          isMuted={false}
-        />
-      ) : item.mediaUrl ? (
-        <Image source={{ uri: item.mediaUrl }} style={styles.tiktokImage} />
-      ) : (
-        <View style={[styles.tiktokImage, styles.imageFallback]}>
-          <Ionicons name="image" size={28} color={theme.muted} />
-          <Text style={styles.muted}>No media yet</Text>
-        </View>
-      )}
+  const renderItem = ({ item }) => {
+    const isActive = item.id === activeId;
+    return (
+      <View style={[styles.tiktokCard, { height: cardHeight }]}>
+        {item.mediaType === 'video' && item.mediaUrl ? (
+          <Video
+            ref={(ref) => {
+              if (ref) {
+                videoRefs.current[item.id] = ref;
+              } else {
+                delete videoRefs.current[item.id];
+              }
+            }}
+            source={{ uri: item.mediaUrl }}
+            style={styles.tiktokImage}
+            resizeMode="cover"
+            shouldPlay={isActive}
+            isLooping
+            isMuted={!isActive}
+            useNativeControls={false}
+          />
+        ) : item.mediaUrl ? (
+          <Image source={{ uri: item.mediaUrl }} style={styles.tiktokImage} />
+        ) : (
+          <View style={[styles.tiktokImage, styles.imageFallback]}>
+            <Ionicons name="image" size={28} color={theme.muted} />
+            <Text style={styles.muted}>No media yet</Text>
+          </View>
+        )}
 
-      <View style={styles.tiktokOverlay}>
-        <View style={styles.feedBottom}>
-          <TouchableOpacity style={styles.uploaderRow}>
-            <View style={styles.uploaderAvatar}>
-              <Text style={styles.uploaderAvatarText}>{item.uploader?.slice(1, 2)?.toUpperCase() || 'F'}</Text>
-            </View>
-            <Text style={[styles.uploaderHandle, styles.overlayText]}>{item.uploader}</Text>
-            <View style={styles.followPill}>
-              <Text style={styles.followText}>Follow</Text>
-            </View>
-          </TouchableOpacity>
-          <Text style={[styles.cardTitle, styles.overlayText]}>{item.title}</Text>
-          <Text style={[styles.cardDesc, styles.overlayMuted]}>{item.description}</Text>
-          <View style={styles.clubTagRow}>
-            {item.club ? (
-              <View style={styles.clubTag}>
-                <Ionicons name="football" size={14} color="#ffffff" />
-                <Text style={styles.clubTagText}>{item.club}</Text>
+        <View style={styles.tiktokOverlay}>
+          <View style={styles.feedBottom}>
+            <TouchableOpacity style={styles.uploaderRow}>
+              <View style={styles.uploaderAvatar}>
+                <Text style={styles.uploaderAvatarText}>
+                  {item.uploader?.slice(1, 2)?.toUpperCase() || 'F'}
+                </Text>
               </View>
-            ) : null}
-            <Text style={[styles.timeago, styles.overlayMuted]}>Just now</Text>
+              <Text style={[styles.uploaderHandle, styles.overlayText]}>{item.uploader}</Text>
+              <View style={styles.followPill}>
+                <Text style={styles.followText}>Follow</Text>
+              </View>
+            </TouchableOpacity>
+            <Text style={[styles.cardTitle, styles.overlayText]}>{item.title}</Text>
+            <Text style={[styles.cardDesc, styles.overlayMuted]}>{item.description}</Text>
+            <View style={styles.clubTagRow}>
+              {item.club ? (
+                <View style={styles.clubTag}>
+                  <Ionicons name="football" size={14} color="#ffffff" />
+                  <Text style={styles.clubTagText}>{item.club}</Text>
+                </View>
+              ) : null}
+              <Text style={[styles.timeago, styles.overlayMuted]}>Just now</Text>
+            </View>
+          </View>
+
+          <View style={styles.actionRail}>
+            <TouchableOpacity style={styles.actionStack}>
+              <Ionicons name="heart" size={28} color="#ffffff" />
+              <Text style={styles.actionStackLabel}>{formatCount(item.likes)}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionStack}>
+              <Ionicons name="chatbubble-ellipses" size={28} color="#ffffff" />
+              <Text style={styles.actionStackLabel}>{formatCount(item.comments)}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionStack}>
+              <Ionicons name="share-social" size={26} color="#ffffff" />
+              <Text style={styles.actionStackLabel}>Share</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionStack}>
+              <Ionicons name="bookmark" size={26} color="#ffffff" />
+              <Text style={styles.actionStackLabel}>Save</Text>
+            </TouchableOpacity>
           </View>
         </View>
-
-        <View style={styles.actionRail}>
-          <TouchableOpacity style={styles.actionStack}>
-            <Ionicons name="heart" size={28} color="#ffffff" />
-            <Text style={styles.actionStackLabel}>{formatCount(item.likes)}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionStack}>
-            <Ionicons name="chatbubble-ellipses" size={28} color="#ffffff" />
-            <Text style={styles.actionStackLabel}>{formatCount(item.comments)}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionStack}>
-            <Ionicons name="share-social" size={26} color="#ffffff" />
-            <Text style={styles.actionStackLabel}>Share</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionStack}>
-            <Ionicons name="bookmark" size={26} color="#ffffff" />
-            <Text style={styles.actionStackLabel}>Save</Text>
-          </TouchableOpacity>
-        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -444,10 +494,22 @@ const FeedScreen = () => {
         data={feed}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        pagingEnabled
         showsVerticalScrollIndicator={false}
+        pagingEnabled
+        snapToInterval={cardHeight}
         snapToAlignment="start"
         decelerationRate="fast"
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        initialNumToRender={3}
+        maxToRenderPerBatch={2}
+        windowSize={4}
+        removeClippedSubviews
+        getItemLayout={(_, index) => ({
+          length: cardHeight,
+          offset: cardHeight * index,
+          index,
+        })}
         contentContainerStyle={{ paddingBottom: 96 }}
       />
       <TouchableOpacity style={styles.fab} onPress={handleAddClip} activeOpacity={0.9}>
@@ -896,3 +958,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 });
+
