@@ -144,7 +144,7 @@ const firebaseConfig = {
   apiKey: 'AIzaSyCXuCX4NsubI_BNCWYPRlKub36ID8PwFWA',
   authDomain: 'footyfeverz-599b3.firebaseapp.com',
   projectId: 'footyfeverz-599b3',
-  storageBucket: 'footyfeverz-599b3.appspot.com',
+  storageBucket: 'footyfeverz-599b3.firebasestorage.app',
   messagingSenderId: '238805863228',
   appId: '1:238805863228:web:f14ca0e9e52f26601f6c39',
   measurementId: 'G-Z0MFTE9WKR',
@@ -187,7 +187,8 @@ const getStorageInstance = () => {
   const app = getAppInstance();
   if (!app) return null;
   try {
-    cachedStorage = getStorage(app);
+    const bucket = firebaseConfig.storageBucket || `${firebaseConfig.projectId}.appspot.com`;
+    cachedStorage = getStorage(app, bucket);
     return cachedStorage;
   } catch (error) {
     console.warn('getStorage failed', error);
@@ -368,8 +369,11 @@ const FeedScreen = () => {
         const cloudUrl = await uploadToStorage(uri, isVideo);
         if (cloudUrl) uploadedUrl = cloudUrl;
       } catch (error) {
-        console.warn('Upload failed, falling back locally', error);
-        Alert.alert('Upload failed', 'Could not upload to Firebase. Showing locally instead.');
+        console.warn('Upload failed, falling back locally', error?.message || error);
+        Alert.alert(
+          'Upload failed',
+          'Could not upload to Firebase Storage. Check storage rules/bucket and try again.'
+        );
       }
     }
 
@@ -389,8 +393,11 @@ const FeedScreen = () => {
         });
         return;
       } catch (error) {
-        console.warn('Add clip failed, falling back locally', error);
-        Alert.alert('Save failed', 'Could not save to Firestore. Showing locally instead.');
+        console.warn('Add clip failed, falling back locally', error?.message || error);
+        Alert.alert(
+          'Save failed',
+          'Could not save to Firestore. Check Firestore rules and try again.'
+        );
       }
     } else {
       Alert.alert('Firebase not configured', 'Feed will update locally only.');
