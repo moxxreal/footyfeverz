@@ -17,7 +17,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
-  Animated,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
@@ -67,47 +66,29 @@ const fixtures = [
   { id: 'g4', home: 'Inter', away: 'Arsenal', time: 'Sun ┬À 19:00', venue: 'San Siro' },
 ];
 
-const teams = [
-  'Real Madrid',
-  'Barcelona',
-  'Manchester United',
-  'Bayern Munich',
-  'Liverpool',
-  'Manchester City',
-  'Arsenal',
-  'Chelsea',
-  'Tottenham',
-  'PSG',
-  'Inter',
-  'AC Milan',
-  'Juventus',
-  'Napoli',
-  'Dortmund',
-  'RB Leipzig',
-  'Atletico Madrid',
-  'Sevilla',
-  'Ajax',
-  'Feyenoord',
-  'Porto',
-  'Benfica',
-  'Sporting CP',
-  'Marseille',
-  'Lyon',
-  'Monaco',
-  'Flamengo',
-  'River Plate',
-  'Boca Juniors',
-  'LAFC',
-  'LA Galaxy',
-  'Seattle Sounders',
-  'Toronto FC',
-  'Celtic',
-  'Rangers',
-  'Galatasaray',
-  'Fenerbahce',
-  'Besiktas',
-  'Shakhtar Donetsk',
-  'Cruz Azul',
+const forumTeams = [
+  { name: 'Real Madrid', logo: require('./assets/teams/real-madrid.png') },
+  { name: 'Barcelona', logo: require('./assets/teams/barcelona.png') },
+  { name: 'Manchester City', logo: require('./assets/teams/man-city.png') },
+  { name: 'Manchester United', logo: require('./assets/teams/man-united.png') },
+  { name: 'Arsenal', logo: require('./assets/teams/arsenal.png') },
+  { name: 'Chelsea', logo: require('./assets/teams/chelsea.png') },
+  { name: 'Liverpool', logo: require('./assets/teams/liverpool.png') },
+  { name: 'Tottenham', logo: require('./assets/teams/tottenham.png') },
+  { name: 'Bayern Munich', logo: require('./assets/teams/bayern-munich.png') },
+  { name: 'Bayer Leverkusen', logo: require('./assets/teams/bayer-leverkusen.png') },
+  { name: 'Borussia Dortmund', logo: require('./assets/teams/borussia-dortmund.png') },
+  { name: 'Juventus', logo: require('./assets/teams/juventus.png') },
+  { name: 'Inter Milan', logo: require('./assets/teams/inter-milan.png') },
+  { name: 'AC Milan', logo: require('./assets/teams/ac-milan.png') },
+  { name: 'PSG', logo: require('./assets/teams/psg.png') },
+  { name: 'Lyon', logo: require('./assets/teams/lyon.png') },
+  { name: 'Olympique Marseille', logo: require('./assets/teams/olympique-marseille.png') },
+  { name: 'SL Benfica', logo: require('./assets/teams/sl-benfica.png') },
+  { name: 'FC Porto', logo: require('./assets/teams/fc-porto.png') },
+  { name: 'Al Nassr', logo: require('./assets/teams/al-nassr.png') },
+  { name: 'Al Hilal', logo: require('./assets/teams/al-hilal.png') },
+  { name: 'Al Ittihad', logo: require('./assets/teams/al-ittihad.png') },
 ];
 
 const firebaseConfig = {
@@ -792,18 +773,16 @@ const FeedScreen = ({ onReady }) => {
 const ForumScreen = () => (
   <SafeAreaView style={styles.screen}>
     <FlatList
-      data={teams}
-      keyExtractor={(item) => item}
-      numColumns={2}
-      contentContainerStyle={styles.forumGrid}
-      columnWrapperStyle={{ gap: 12 }}
+      data={forumTeams}
+      keyExtractor={(item) => item.name}
+      contentContainerStyle={styles.forumList}
       renderItem={({ item }) => (
-        <TouchableOpacity activeOpacity={0.85} style={styles.forumCard}>
-          <View style={styles.forumLogoPlaceholder}>
-            <Text style={styles.forumLogoText}>Logo</Text>
+        <TouchableOpacity activeOpacity={0.9} style={styles.forumCard}>
+          <View style={styles.forumLogoContainer}>
+            <Image source={item.logo} style={styles.forumLogoImage} resizeMode="contain" />
           </View>
-          <Text style={styles.forumTeamLabel}>{item}</Text>
-          <Text style={styles.forumHint}>Tap to add team logo</Text>
+          <Text style={styles.forumTeamLabel}>{item.name}</Text>
+          <Text style={styles.forumHint}>Tap to edit this slot</Text>
         </TouchableOpacity>
       )}
     />
@@ -1063,49 +1042,48 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 13,
   },
-  forumGrid: {
+  forumList: {
     padding: 16,
     gap: 12,
   },
   forumCard: {
-    flex: 1,
-    minHeight: 150,
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    padding: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: 14,
+    marginBottom: 12,
     shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 10,
-    elevation: 4,
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 5 },
+    shadowRadius: 8,
+    elevation: 3,
   },
-  forumLogoPlaceholder: {
+  forumLogoContainer: {
     width: 80,
     height: 80,
     borderRadius: 16,
+    backgroundColor: '#f8fafc',
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    backgroundColor: '#f2f4f7',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  forumLogoText: {
-    color: theme.muted,
-    fontWeight: '700',
+  forumLogoImage: {
+    width: '80%',
+    height: '80%',
   },
   forumTeamLabel: {
     color: theme.text,
     fontWeight: '700',
-    marginTop: 10,
+    fontSize: 16,
   },
   forumHint: {
     color: theme.muted,
     fontSize: 12,
-    marginTop: 4,
   },
   modalOverlay: {
     flex: 1,
