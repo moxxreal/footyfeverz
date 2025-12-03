@@ -482,19 +482,19 @@ const FeedScreen = () => {
 
           <View style={styles.actionRail}>
             <TouchableOpacity style={styles.actionStack}>
-              <Ionicons name="heart" size={28} color="#ffffff" />
+              <Ionicons name="heart" size={32} color="#ffffff" />
               <Text style={styles.actionStackLabel}>{formatCount(item.likes)}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actionStack}>
-              <Ionicons name="chatbubble-ellipses" size={28} color="#ffffff" />
+              <Ionicons name="chatbubble-ellipses" size={32} color="#ffffff" />
               <Text style={styles.actionStackLabel}>{formatCount(item.comments)}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actionStack}>
-              <Ionicons name="share-social" size={26} color="#ffffff" />
+              <Ionicons name="share-social" size={30} color="#ffffff" />
               <Text style={styles.actionStackLabel}>Share</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actionStack}>
-              <Ionicons name="bookmark" size={26} color="#ffffff" />
+              <Ionicons name="bookmark" size={30} color="#ffffff" />
               <Text style={styles.actionStackLabel}>Save</Text>
             </TouchableOpacity>
           </View>
@@ -868,7 +868,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: tabBarHeight + 10,
+    paddingBottom: 12,
     backgroundColor: 'transparent',
   },
   feedBottom: {
@@ -938,7 +938,7 @@ const styles = StyleSheet.create({
     width: 70,
     alignItems: 'center',
     gap: 14,
-    marginBottom: tabBarHeight + 30,
+    marginBottom: tabBarHeight + 6,
   },
   actionStack: {
     alignItems: 'center',
