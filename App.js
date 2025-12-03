@@ -4,6 +4,7 @@ import {
   Dimensions,
   FlatList,
   Image,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -143,7 +144,7 @@ const firebaseConfig = {
   apiKey: 'AIzaSyCXuCX4NsubI_BNCWYPRlKub36ID8PwFWA',
   authDomain: 'footyfeverz-599b3.firebaseapp.com',
   projectId: 'footyfeverz-599b3',
-  storageBucket: 'footyfeverz-599b3.firebasestorage.app',
+  storageBucket: 'footyfeverz-599b3.appspot.com',
   messagingSenderId: '238805863228',
   appId: '1:238805863228:web:f14ca0e9e52f26601f6c39',
   measurementId: 'G-Z0MFTE9WKR',
@@ -327,7 +328,7 @@ const FeedScreen = () => {
 
   const uploadToStorage = useCallback(
     async (uri, isVideo) => {
-      if (!storage) return null;
+      if (!storage) throw new Error('Storage not configured');
       const response = await fetch(uri);
       const blob = await response.blob();
       const extGuess = uri.split('.').pop()?.split('?')[0] || (isVideo ? 'mp4' : 'jpg');
@@ -345,7 +346,7 @@ const FeedScreen = () => {
   const handleAddClip = useCallback(async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      console.warn('Media permission denied');
+      Alert.alert('Permission needed', 'Enable photo/video library access to add a clip.');
       return;
     }
 
@@ -368,6 +369,7 @@ const FeedScreen = () => {
         if (cloudUrl) uploadedUrl = cloudUrl;
       } catch (error) {
         console.warn('Upload failed, falling back locally', error);
+        Alert.alert('Upload failed', 'Could not upload to Firebase. Showing locally instead.');
       }
     }
 
@@ -388,7 +390,10 @@ const FeedScreen = () => {
         return;
       } catch (error) {
         console.warn('Add clip failed, falling back locally', error);
+        Alert.alert('Save failed', 'Could not save to Firestore. Showing locally instead.');
       }
+    } else {
+      Alert.alert('Firebase not configured', 'Feed will update locally only.');
     }
 
     // Local fallback so the button still feels responsive
