@@ -559,6 +559,8 @@ const formatCount = (count) => {
 
 export default function App() {
   const [feedReady, setFeedReady] = useState(false);
+  const loaderStart = useRef(Date.now());
+  const loaderMinDuration = 1000;
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -583,6 +585,12 @@ export default function App() {
   const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] });
   const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.65, 1] });
 
+  const handleFeedReady = useCallback(() => {
+    const elapsed = Date.now() - loaderStart.current;
+    const remaining = Math.max(0, loaderMinDuration - elapsed);
+    setTimeout(() => setFeedReady(true), remaining);
+  }, [loaderMinDuration]);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -606,12 +614,12 @@ export default function App() {
             <Tab.Screen name="Profile" component={ProfileScreen} />
             <Tab.Screen name="Games" component={GamesScreen} />
             <Tab.Screen name="Feed">
-              {() => <FeedScreen onReady={() => setFeedReady(true)} />}
+              {() => <FeedScreen onReady={handleFeedReady} />}
             </Tab.Screen>
             <Tab.Screen name="Forum" component={ForumScreen} />
           </Tab.Navigator>
           {!feedReady && (
-            <View style={styles.loaderOverlay}>
+            <View style={styles.loaderOverlay} pointerEvents="none">
               <Animated.Image source={logoSource} style={[styles.loaderImage, { transform: [{ scale }], opacity }]} />
             </View>
           )}
