@@ -5,6 +5,7 @@ import {
   FlatList,
   Image,
   Alert,
+  TextInput,
   ScrollView,
   StyleSheet,
   Text,
@@ -98,6 +99,123 @@ const teams = [
   'Cruz Azul',
 ];
 
+const ProfileScreen = () => {
+  const [uploads, setUploads] = useState(fallbackUploads);
+  const [avatarUri, setAvatarUri] = useState(null);
+  const [bio, setBio] = useState('Collecting match moments and terrace energy.');
+  const db = useMemo(() => getDb(), []);
+
+  useEffect(() => {
+    if (!db) return undefined;
+    const q = query(collection(db, 'feed'), where('uploader', '==', '@you'), orderBy('createdAt', 'desc'));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            title: data.title || 'Untitled',
+            mediaUrl: data.mediaUrl || data.thumbnail || '',
+            mediaType: data.mediaType || 'image',
+          };
+        });
+        if (list.length) setUploads(list);
+      },
+      (err) => console.warn('Profile uploads failed', err)
+    );
+  }, [db]);
+
+  const handlePickAvatar = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Enable photo library access to update your photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+    if (result.canceled) return;
+    const uri = result.assets?.[0]?.uri;
+    if (uri) setAvatarUri(uri);
+  };
+
+  return (
+    <SafeAreaView style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <View style={styles.heroCard}>
+          <TouchableOpacity onPress={handlePickAvatar} activeOpacity={0.8}>
+            <View style={styles.avatarWrapper}>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+              ) : (
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>FF</Text>
+                </View>
+              )}
+              <View style={styles.avatarEditBadge}>
+                <Ionicons name="camera" size={16} color={theme.background} />
+              </View>
+            </View>
+          </TouchableOpacity>
+          <Text style={styles.title}>Footy Fever</Text>
+          <Text style={styles.muted}>Ultra since 2005 · Global</Text>
+          <TextInput
+            style={styles.bioInput}
+            value={bio}
+            onChangeText={setBio}
+            placeholder="Write your bio"
+            placeholderTextColor={theme.muted}
+            multiline
+          />
+          <View style={styles.badges}>
+            <View style={[styles.badge, { backgroundColor: theme.highlight }]}>
+              <Ionicons name="flash" size={16} color={theme.background} />
+              <Text style={[styles.badgeText, { color: theme.background }]}>Creator</Text>
+            </View>
+            <View style={[styles.badge, { backgroundColor: theme.card, borderColor: theme.secondary }]}>
+              <MaterialCommunityIcons name="shield-star" size={16} color={theme.secondary} />
+              <Text style={[styles.badgeText, { color: theme.secondary }]}>Club Captain</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Uploads</Text>
+          {uploads.length === 0 ? (
+            <Text style={styles.muted}>No uploads yet. Share your first clip!</Text>
+          ) : (
+            <View style={styles.uploadGrid}>
+              {uploads.map((item) => (
+                <View key={item.id} style={styles.uploadCard}>
+                  {item.mediaType === 'video' ? (
+                    <Video
+                      source={{ uri: item.mediaUrl }}
+                      style={styles.uploadImage}
+                      resizeMode="cover"
+                      isMuted
+                      shouldPlay={false}
+                    />
+                  ) : item.mediaUrl ? (
+                    <Image source={{ uri: item.mediaUrl }} style={styles.uploadImage} />
+                  ) : (
+                    <View style={[styles.uploadImage, styles.imageFallback]}>
+                      <Ionicons name="image" size={24} color={theme.muted} />
+                    </View>
+                  )}
+                  <Text numberOfLines={1} style={styles.uploadTitle}>
+                    {item.title}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+};
 const firebaseConfig = {
   apiKey: 'AIzaSyCXuCX4NsubI_BNCWYPRlKub36ID8PwFWA',
   authDomain: 'footyfeverz-599b3.firebaseapp.com',
@@ -156,16 +274,16 @@ const getStorageInstance = () => {
 
 const fallbackUploads = [
   {
-    id: "up1",
-    title: "Training ground screamer",
-    mediaUrl: "https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1200&q=80",
-    mediaType: "image",
+    id: 'up1',
+    title: 'Training ground screamer',
+    mediaUrl: 'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1200&q=80',
+    mediaType: 'image',
   },
   {
-    id: "up2",
-    title: "Matchday tifo",
-    mediaUrl: "https://images.unsplash.com/photo-1521417531058-0fdfbdd7e9bf?auto=format&fit=crop&w=1200&q=80",
-    mediaType: "image",
+    id: 'up2',
+    title: 'Matchday tifo',
+    mediaUrl: 'https://images.unsplash.com/photo-1521417531058-0fdfbdd7e9bf?auto=format&fit=crop&w=1200&q=80',
+    mediaType: 'image',
   },
 ];
 
@@ -663,6 +781,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
+  avatarWrapper: {
+    position: 'relative',
+    marginBottom: 12,
+  },
+  avatarImage: {
+    width: 90,
+    height: 90,
+    borderRadius: 24,
+    backgroundColor: '#e2e8f0',
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    backgroundColor: theme.secondary,
+    padding: 6,
+    borderRadius: 999,
+  },
   avatarText: {
     color: theme.text,
     fontWeight: '700',
@@ -717,6 +853,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 10,
     textAlign: 'center',
+  },
+  bioInput: {
+    color: theme.text,
+    fontSize: 14,
+    marginTop: 10,
+    textAlign: 'center',
+    backgroundColor: '#eef2f7',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
   statRow: {
     flexDirection: 'row',
