@@ -504,7 +504,7 @@ const FeedScreen = () => {
   };
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <FlatList
         data={feed}
         keyExtractor={(item) => item.id}
@@ -530,7 +530,7 @@ const FeedScreen = () => {
           offset: cardHeight * index,
           index,
         })}
-        contentContainerStyle={{ paddingBottom: 80 }}
+        contentContainerStyle={{ paddingBottom: tabBarHeight }}
       />
       <TouchableOpacity style={styles.fab} onPress={handleAddClip} activeOpacity={0.9}>
         <Ionicons name="add" size={28} color={theme.background} />
