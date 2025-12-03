@@ -560,7 +560,7 @@ const formatCount = (count) => {
 export default function App() {
   const [feedReady, setFeedReady] = useState(false);
   const [logoLoaded, setLogoLoaded] = useState(false);
-  const [loaderVisible, setLoaderVisible] = useState(true);
+  const [minDurationDone, setMinDurationDone] = useState(false);
   const loaderStart = useRef(Date.now());
   const loaderMinDuration = 1000;
   const pulse = useRef(new Animated.Value(0)).current;
@@ -587,20 +587,14 @@ export default function App() {
   const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] });
   const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.65, 1] });
 
-  const handleFeedReady = useCallback(() => {
-    const elapsed = Date.now() - loaderStart.current;
-    const remaining = Math.max(0, loaderMinDuration - elapsed);
-    setTimeout(() => setFeedReady(true), remaining);
+  useEffect(() => {
+    const timer = setTimeout(() => setMinDurationDone(true), loaderMinDuration);
+    return () => clearTimeout(timer);
   }, [loaderMinDuration]);
 
-  useEffect(() => {
-    if (feedReady && logoLoaded && loaderVisible) {
-      const elapsed = Date.now() - loaderStart.current;
-      const remaining = Math.max(0, loaderMinDuration - elapsed);
-      const timer = setTimeout(() => setLoaderVisible(false), remaining);
-      return () => clearTimeout(timer);
-    }
-  }, [feedReady, logoLoaded, loaderVisible, loaderMinDuration]);
+  const handleFeedReady = useCallback(() => {
+    setFeedReady(true);
+  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -629,13 +623,19 @@ export default function App() {
             </Tab.Screen>
             <Tab.Screen name="Forum" component={ForumScreen} />
           </Tab.Navigator>
-          {loaderVisible && (
+          {!(feedReady && minDurationDone) && (
             <View style={styles.loaderOverlay} pointerEvents="none">
               <Animated.Image
                 source={logoSource}
                 onLoad={() => setLogoLoaded(true)}
+                onError={() => setLogoLoaded(false)}
                 style={[styles.loaderImage, { transform: [{ scale }], opacity }]}
               />
+              {!logoLoaded && (
+                <View style={styles.loaderFallback}>
+                  <Text style={styles.loaderText}>Footy FeverZ</Text>
+                </View>
+              )}
             </View>
           )}
         </NavigationContainer>
@@ -1011,6 +1011,17 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     resizeMode: 'contain',
+  },
+  loaderFallback: {
+    position: 'absolute',
+    bottom: tabBarHeight + 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loaderText: {
+    color: theme.secondary,
+    fontWeight: '800',
+    fontSize: 18,
   },
   overlayText: {
     color: '#ffffff',
