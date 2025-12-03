@@ -441,6 +441,8 @@ const FeedScreen = () => {
             isLooping
             isMuted={!isActive}
             useNativeControls={false}
+            usePoster
+            posterSource={item.thumbnail ? { uri: item.thumbnail } : undefined}
           />
         ) : item.mediaUrl ? (
           <Image source={{ uri: item.mediaUrl }} style={styles.tiktokImage} />
@@ -512,9 +514,9 @@ const FeedScreen = () => {
         decelerationRate="fast"
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
-        initialNumToRender={3}
-        maxToRenderPerBatch={2}
-        windowSize={4}
+        initialNumToRender={4}
+        maxToRenderPerBatch={3}
+        windowSize={5}
         removeClippedSubviews
         bounces={false}
         overScrollMode="never"
