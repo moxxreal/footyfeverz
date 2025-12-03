@@ -49,51 +49,6 @@ const theme = {
   danger: '#e11d48',
 };
 
-const fallbackFeed = [
-  {
-    id: '1',
-    title: 'Last-Minute Winner',
-    club: 'Manchester City',
-    description: 'Palmer curls one from distance to seal the derby.',
-    thumbnail:
-      'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1600&q=80',
-    mediaUrl:
-      'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1600&q=80',
-    mediaType: 'image',
-    uploader: '@blue_moon',
-    likes: 2400,
-    comments: 328,
-  },
-  {
-    id: '2',
-    title: 'Madrid on the Break',
-    club: 'Real Madrid',
-    description: 'Vinicius dances past two and squares for a simple tap-in.',
-    thumbnail:
-      'https://images.unsplash.com/photo-1521417531058-0fdfbdd7e9bf?auto=format&fit=crop&w=1600&q=80',
-    mediaUrl:
-      'https://images.unsplash.com/photo-1521417531058-0fdfbdd7e9bf?auto=format&fit=crop&w=1600&q=80',
-    mediaType: 'image',
-    uploader: '@hala_madrid',
-    likes: 6100,
-    comments: 712,
-  },
-  {
-    id: '3',
-    title: 'Camp Nou Roars',
-    club: 'Barcelona',
-    description: 'La Masia youngster makes his debut with a nutmeg and an assist.',
-    thumbnail:
-      'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1600&q=80',
-    mediaUrl:
-      'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1600&q=80',
-    mediaType: 'image',
-    uploader: '@culer_core',
-    likes: 3100,
-    comments: 451,
-  },
-];
-
 const fixtures = [
   { id: 'g1', home: 'Real Madrid', away: 'Liverpool', time: 'Today ┬À 20:00', venue: 'Bernabeu' },
   { id: 'g2', home: 'Barcelona', away: 'PSG', time: 'Tomorrow ┬À 21:00', venue: 'Olympic Stadium' },
@@ -269,7 +224,7 @@ const GamesScreen = () => (
 );
 
 const FeedScreen = ({ onReady }) => {
-  const [feed, setFeed] = useState(fallbackFeed);
+  const [feed, setFeed] = useState([]);
   const [hasLoaded, setHasLoaded] = useState(false);
   const db = useMemo(() => getDb(), []);
   const storage = useMemo(() => getStorageInstance(), []);
@@ -305,23 +260,30 @@ const FeedScreen = ({ onReady }) => {
             mediaType: data.mediaType || 'image',
           };
         });
-        if (items.length) setFeed(items);
-        setHasLoaded(true);
+        setFeed(items);
+        if (!hasLoaded) {
+          setHasLoaded(true);
+          onReady?.();
+        }
       },
       (error) => console.warn('Feed subscription failed', error)
     );
-  }, [db]);
+  }, [db, hasLoaded, onReady]);
 
   useEffect(() => {
     if (!feed.length) return;
     if (!activeId || !feed.find((item) => item.id === activeId)) {
       setActiveId(feed[0].id);
     }
-    if (!hasLoaded) {
+  }, [feed, activeId]);
+
+  useEffect(() => {
+    if (!db && !hasLoaded) {
+      // If Firebase is not configured, avoid blocking on loader
       setHasLoaded(true);
       onReady?.();
     }
-  }, [feed, activeId, hasLoaded, onReady]);
+  }, [db, hasLoaded, onReady]);
 
   useEffect(() => {
     const currentKey = activeId;
