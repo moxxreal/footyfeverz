@@ -1002,7 +1002,7 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
     padding: 20,
   },
   modalCard: {
@@ -1010,6 +1010,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     gap: 10,
+    marginBottom: 60,
   },
   commentList: {
     gap: 8,
