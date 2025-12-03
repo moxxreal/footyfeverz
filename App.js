@@ -5,8 +5,6 @@ import {
   FlatList,
   Image,
   Alert,
-  Animated,
-  Easing,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,8 +14,6 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import { Video } from 'expo-av';
-import { Asset } from 'expo-asset';
-import { Image as RNImage } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -39,7 +35,6 @@ const Tab = createBottomTabNavigator();
 const { height: screenHeight } = Dimensions.get('window');
 const tabBarHeight = 66;
 const cardHeight = Math.round(screenHeight - tabBarHeight);
-const logoSource = require('./assets/footyfeverz-logo.png');
 
 const theme = {
   background: '#f5f7fb',
@@ -560,69 +555,6 @@ const formatCount = (count) => {
 };
 
 export default function App() {
-  const [feedReady, setFeedReady] = useState(false);
-  const [logoLoaded, setLogoLoaded] = useState(false);
-  const [minDurationDone, setMinDurationDone] = useState(false);
-  const [logoUri, setLogoUri] = useState(null);
-  const loaderStart = useRef(Date.now());
-  const loaderMinDuration = 1000;
-  const pulse = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 900,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 900,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-  }, [pulse]);
-
-  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] });
-  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.65, 1] });
-
-  useEffect(() => {
-    const timer = setTimeout(() => setMinDurationDone(true), loaderMinDuration);
-    return () => clearTimeout(timer);
-  }, [loaderMinDuration]);
-
-  useEffect(() => {
-    // Preload and resolve the logo to ensure it renders on the splash overlay
-    const resolved = RNImage.resolveAssetSource(logoSource);
-    if (resolved?.uri) {
-      setLogoUri(resolved.uri);
-    }
-    Asset.fromModule(logoSource)
-      .downloadAsync()
-      .then((asset) => {
-        setLogoUri((prev) => prev || asset.localUri || asset.uri);
-        setLogoLoaded(true);
-      })
-      .catch((err) => {
-        console.warn('Logo preload failed', err);
-        setLogoLoaded(true);
-      });
-  }, []);
-
-  useEffect(() => {
-    // Safety in case onLoad isn't fired by the image component
-    const timer = setTimeout(() => setLogoLoaded(true), 1200);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handleFeedReady = useCallback(() => {
-    setFeedReady(true);
-  }, []);
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -645,30 +577,9 @@ export default function App() {
           >
             <Tab.Screen name="Profile" component={ProfileScreen} />
             <Tab.Screen name="Games" component={GamesScreen} />
-            <Tab.Screen name="Feed">
-              {() => <FeedScreen onReady={handleFeedReady} />}
-            </Tab.Screen>
+            <Tab.Screen name="Feed" component={FeedScreen} />
             <Tab.Screen name="Forum" component={ForumScreen} />
           </Tab.Navigator>
-          {!(feedReady && minDurationDone && logoLoaded) && (
-            <View style={styles.loaderOverlay} pointerEvents="none">
-              <Animated.Image
-                source={logoUri ? { uri: logoUri } : logoSource}
-                onLoad={() => setLogoLoaded(true)}
-                onLoadEnd={() => setLogoLoaded(true)}
-                onError={(e) => {
-                  console.warn('Logo failed to render', e?.nativeEvent?.error);
-                  setLogoLoaded(false);
-                }}
-                style={[styles.loaderImage, { transform: [{ scale }], opacity }]}
-              />
-              {!logoLoaded && (
-                <View style={styles.loaderFallback}>
-                  <Text style={styles.loaderText}>Footy FeverZ</Text>
-                </View>
-              )}
-            </View>
-          )}
         </NavigationContainer>
       </SafeAreaProvider>
     </GestureHandlerRootView>
@@ -1026,33 +937,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '800',
     fontSize: 14,
-  },
-  loaderOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-  },
-  loaderImage: {
-    width: 240,
-    height: 240,
-    resizeMode: 'contain',
-  },
-  loaderFallback: {
-    position: 'absolute',
-    bottom: tabBarHeight + 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loaderText: {
-    color: theme.secondary,
-    fontWeight: '800',
-    fontSize: 18,
   },
   overlayText: {
     color: '#ffffff',
