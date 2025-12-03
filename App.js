@@ -594,6 +594,7 @@ const FeedScreen = ({ onReady }) => {
   const renderItem = ({ item }) => {
     const isActive = item.id === activeId;
     const isLiked = liked[item.id];
+    const likeCount = item.likes || 0;
     return (
       <View style={[styles.tiktokCard, { height: cardHeight }]}>
         {item.mediaType === 'video' && item.mediaUrl ? (
@@ -653,9 +654,7 @@ const FeedScreen = ({ onReady }) => {
           <View style={styles.actionRail}>
             <TouchableOpacity style={styles.actionStack} onPress={() => handleToggleLike(item)}>
               <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={32} color="#ffffff" />
-              <Text style={styles.actionStackLabel}>
-                {isLiked ? formatCount(item.likes + 1) : formatCount(item.likes)}
-              </Text>
+              <Text style={styles.actionStackLabel}>{formatCount(likeCount)}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.actionStack}
