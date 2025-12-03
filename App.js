@@ -5,12 +5,14 @@ import {
   FlatList,
   Image,
   Alert,
+  Modal,
   TextInput,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  Share,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
@@ -173,7 +175,9 @@ const fallbackUploads = [
 const ProfileScreen = () => {
   const [uploads, setUploads] = useState(fallbackUploads);
   const [avatarUri, setAvatarUri] = useState(null);
-  const [bio, setBio] = useState('Collecting match moments and terrace energy.');
+  const [bio, setBio] = useState('');
+  const [showBioInput, setShowBioInput] = useState(false);
+  const [uploadPlaying, setUploadPlaying] = useState({});
   const db = useMemo(() => getDb(), []);
 
   useEffect(() => {
@@ -215,8 +219,8 @@ const ProfileScreen = () => {
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.heroCard}>
-          <TouchableOpacity onPress={handlePickAvatar} activeOpacity={0.8}>
+                <View style={styles.heroCard}>
+          <View style={styles.avatarRow}>
             <View style={styles.avatarWrapper}>
               {avatarUri ? (
                 <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
@@ -225,21 +229,34 @@ const ProfileScreen = () => {
                   <Text style={styles.avatarText}>FF</Text>
                 </View>
               )}
-              <View style={styles.avatarEditBadge}>
+              <TouchableOpacity style={styles.avatarEditBadge} onPress={handlePickAvatar}>
                 <Ionicons name="camera" size={16} color={theme.background} />
-              </View>
+              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
+            <TouchableOpacity onPress={handlePickAvatar}>
+              <Text style={styles.uploadAvatarText}>Upload profile picture</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.title}>Footy Fever</Text>
-          <Text style={styles.muted}>Ultra since 2005 · Global</Text>
-          <TextInput
-            style={styles.bioInput}
-            value={bio}
-            onChangeText={setBio}
-            placeholder="Write your bio"
-            placeholderTextColor={theme.muted}
-            multiline
-          />
+          <TouchableOpacity style={styles.addBioButton} onPress={() => setShowBioInput((s) => !s)}>
+            <Text style={styles.addBioText}>{bio ? 'Edit bio' : 'Add bio'}</Text>
+          </TouchableOpacity>
+          {showBioInput ? (
+            <View style={styles.bioInputWrapper}>
+              <TextInput
+                style={styles.bioInput}
+                value={bio}
+                onChangeText={setBio}
+                placeholder="Add bio"
+                placeholderTextColor={theme.muted}
+                multiline
+              />
+              <TouchableOpacity onPress={() => setShowBioInput(false)}>
+                <Text style={styles.addBioText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          {bio ? <Text style={styles.bio}>{bio}</Text> : null}
           <View style={styles.badges}>
             <View style={[styles.badge, { backgroundColor: theme.highlight }]}>
               <Ionicons name="flash" size={16} color={theme.background} />
@@ -261,13 +278,21 @@ const ProfileScreen = () => {
               {uploads.map((item) => (
                 <View key={item.id} style={styles.uploadCard}>
                   {item.mediaType === 'video' ? (
-                    <Video
-                      source={{ uri: item.mediaUrl }}
-                      style={styles.uploadImage}
-                      resizeMode="cover"
-                      isMuted
-                      shouldPlay={false}
-                    />
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      onPress={() =>
+                        setUploadPlaying((prev) => ({ ...prev, [item.id]: !prev[item.id] }))
+                      }
+                    >
+                      <Video
+                        source={{ uri: item.mediaUrl }}
+                        style={styles.uploadImage}
+                        resizeMode="cover"
+                        isMuted={false}
+                        shouldPlay={!!uploadPlaying[item.id]}
+                        useNativeControls
+                      />
+                    </TouchableOpacity>
                   ) : item.mediaUrl ? (
                     <Image source={{ uri: item.mediaUrl }} style={styles.uploadImage} />
                   ) : (
@@ -315,6 +340,8 @@ const GamesScreen = () => (
 const FeedScreen = ({ onReady }) => {
   const [feed, setFeed] = useState([]);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [liked, setLiked] = useState({});
+  const [commentModal, setCommentModal] = useState({ visible: false, item: null, text: '' });
   const db = useMemo(() => getDb(), []);
   const storage = useMemo(() => getStorageInstance(), []);
   const videoRefs = useRef({});
@@ -420,6 +447,10 @@ const FeedScreen = ({ onReady }) => {
   );
 
   const handleAddClip = useCallback(async () => {
+    if (feed.length >= 30) {
+      Alert.alert('Upload limit reached', 'You can upload up to 30 clips.');
+      return;
+    }
     if (!currentUser || currentUser === '@guest') {
       Alert.alert('Sign in required', 'You need to be signed in to upload.');
       return;
@@ -502,6 +533,7 @@ const FeedScreen = ({ onReady }) => {
 
   const renderItem = ({ item }) => {
     const isActive = item.id === activeId;
+    const isLiked = liked[item.id];
     return (
       <View style={[styles.tiktokCard, { height: cardHeight }]}>
         {item.mediaType === 'video' && item.mediaUrl ? (
@@ -559,19 +591,39 @@ const FeedScreen = ({ onReady }) => {
           </View>
 
           <View style={styles.actionRail}>
-            <TouchableOpacity style={styles.actionStack}>
-              <Ionicons name="heart" size={32} color="#ffffff" />
-              <Text style={styles.actionStackLabel}>{formatCount(item.likes)}</Text>
+            <TouchableOpacity
+              style={styles.actionStack}
+              onPress={() => setLiked((prev) => ({ ...prev, [item.id]: !prev[item.id] }))}
+            >
+              <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={32} color="#ffffff" />
+              <Text style={styles.actionStackLabel}>
+                {isLiked ? formatCount(item.likes + 1) : formatCount(item.likes)}
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionStack}>
+            <TouchableOpacity
+              style={styles.actionStack}
+              onPress={() => setCommentModal({ visible: true, item, text: '' })}
+            >
               <Ionicons name="chatbubble-ellipses" size={32} color="#ffffff" />
               <Text style={styles.actionStackLabel}>{formatCount(item.comments)}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionStack}>
+            <TouchableOpacity
+              style={styles.actionStack}
+              onPress={async () => {
+                try {
+                  await Share.share({ message: `${item.title} - ${item.mediaUrl || ''}` });
+                } catch (err) {
+                  console.warn('Share failed', err);
+                }
+              }}
+            >
               <Ionicons name="share-social" size={30} color="#ffffff" />
               <Text style={styles.actionStackLabel}>Share</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionStack}>
+            <TouchableOpacity
+              style={styles.actionStack}
+              onPress={() => Alert.alert('Saved', 'Download coming soon.')}
+            >
               <Ionicons name="bookmark" size={30} color="#ffffff" />
               <Text style={styles.actionStackLabel}>Save</Text>
             </TouchableOpacity>
@@ -614,6 +666,35 @@ const FeedScreen = ({ onReady }) => {
         <Ionicons name="add" size={28} color={theme.background} />
         <Text style={styles.fabText}>Add clip</Text>
       </TouchableOpacity>
+      <Modal visible={commentModal.visible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.panelTitle}>Comments</Text>
+            <Text style={styles.muted}>Coming soon. Leave a quick note:</Text>
+            <TextInput
+              style={styles.commentInput}
+              value={commentModal.text}
+              onChangeText={(text) => setCommentModal((prev) => ({ ...prev, text }))}
+              placeholder="Write a comment"
+              placeholderTextColor={theme.muted}
+              multiline
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setCommentModal({ visible: false, item: null, text: '' })}>
+                <Text style={styles.addBioText}>Close</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  Alert.alert('Comment', 'Comments will post in a future update.');
+                  setCommentModal({ visible: false, item: null, text: '' });
+                }}
+              >
+                <Text style={styles.addBioText}>Send</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -725,6 +806,11 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginBottom: 12,
   },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   avatarImage: {
     width: 90,
     height: 90,
@@ -738,6 +824,10 @@ const styles = StyleSheet.create({
     backgroundColor: theme.secondary,
     padding: 6,
     borderRadius: 999,
+  },
+  uploadAvatarText: {
+    color: theme.secondary,
+    fontWeight: '700',
   },
   avatarText: {
     color: theme.text,
@@ -794,6 +884,11 @@ const styles = StyleSheet.create({
     marginTop: 10,
     textAlign: 'center',
   },
+  bioInputWrapper: {
+    width: '100%',
+    marginTop: 10,
+    gap: 8,
+  },
   bioInput: {
     color: theme.text,
     fontSize: 14,
@@ -804,6 +899,19 @@ const styles = StyleSheet.create({
     padding: 10,
     borderWidth: 1,
     borderColor: '#e5e7eb',
+  },
+  addBioButton: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#eef2f7',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  addBioText: {
+    color: theme.secondary,
+    fontWeight: '700',
   },
   statRow: {
     flexDirection: 'row',
@@ -859,6 +967,31 @@ const styles = StyleSheet.create({
     color: theme.text,
     fontWeight: '600',
     fontSize: 13,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    gap: 10,
+  },
+  commentInput: {
+    minHeight: 80,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    padding: 10,
+    color: theme.text,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
   },
   sectionTitle: {
     color: theme.text,
@@ -1115,5 +1248,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 });
+
+
 
 
