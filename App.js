@@ -650,7 +650,7 @@ export default function App() {
             </Tab.Screen>
             <Tab.Screen name="Forum" component={ForumScreen} />
           </Tab.Navigator>
-          {!(feedReady && minDurationDone) && (
+          {!(feedReady && minDurationDone && logoLoaded) && (
             <View style={styles.loaderOverlay} pointerEvents="none">
               <Animated.Image
                 source={logoUri ? { uri: logoUri } : logoSource}
