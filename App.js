@@ -186,6 +186,7 @@ const ProfileScreen = () => {
   const [bio, setBio] = useState('');
   const [showBioInput, setShowBioInput] = useState(false);
   const [uploadPlaying, setUploadPlaying] = useState({});
+  const [preview, setPreview] = useState({ visible: false, item: null });
   const db = useMemo(() => getDb(), []);
 
   useEffect(() => {
@@ -227,23 +228,21 @@ const ProfileScreen = () => {
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scroll}>
-                <View style={styles.heroCard}>
+        <View style={styles.heroCard}>
           <View style={styles.avatarRow}>
             <View style={styles.avatarWrapper}>
               {avatarUri ? (
                 <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
               ) : (
                 <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>FF</Text>
+                  <Ionicons name="camera" size={20} color={theme.secondary} />
+                  <Text style={styles.avatarPlaceholderText}>Upload photo</Text>
                 </View>
               )}
               <TouchableOpacity style={styles.avatarEditBadge} onPress={handlePickAvatar}>
                 <Ionicons name="camera" size={16} color={theme.background} />
               </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={handlePickAvatar}>
-              <Text style={styles.uploadAvatarText}>Upload profile picture</Text>
-            </TouchableOpacity>
           </View>
           <Text style={styles.title}>Footy Fever</Text>
           <TouchableOpacity style={styles.addBioButton} onPress={() => setShowBioInput((s) => !s)}>
@@ -265,16 +264,6 @@ const ProfileScreen = () => {
             </View>
           ) : null}
           {bio ? <Text style={styles.bio}>{bio}</Text> : null}
-          <View style={styles.badges}>
-            <View style={[styles.badge, { backgroundColor: theme.highlight }]}>
-              <Ionicons name="flash" size={16} color={theme.background} />
-              <Text style={[styles.badgeText, { color: theme.background }]}>Creator</Text>
-            </View>
-            <View style={[styles.badge, { backgroundColor: theme.card, borderColor: theme.secondary }]}>
-              <MaterialCommunityIcons name="shield-star" size={16} color={theme.secondary} />
-              <Text style={[styles.badgeText, { color: theme.secondary }]}>Club Captain</Text>
-            </View>
-          </View>
         </View>
 
         <View style={styles.panel}>
@@ -284,7 +273,12 @@ const ProfileScreen = () => {
           ) : (
             <View style={styles.uploadGrid}>
               {uploads.map((item) => (
-                <View key={item.id} style={styles.uploadCard}>
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.uploadCard}
+                  activeOpacity={0.85}
+                  onPress={() => setPreview({ visible: true, item })}
+                >
                   {item.mediaType === 'video' ? (
                     <TouchableOpacity
                       activeOpacity={0.85}
@@ -311,11 +305,35 @@ const ProfileScreen = () => {
                   <Text numberOfLines={1} style={styles.uploadTitle}>
                     {item.title}
                   </Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           )}
         </View>
+        <Modal visible={preview.visible} transparent animationType="fade" onRequestClose={() => setPreview({ visible: false, item: null })}>
+          <TouchableWithoutFeedback onPress={() => setPreview({ visible: false, item: null })}>
+            <View style={styles.previewOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.previewContent}>
+                  {preview.item?.mediaType === 'video' ? (
+                    <Video
+                      source={{ uri: preview.item.mediaUrl }}
+                      style={styles.previewMedia}
+                      resizeMode="contain"
+                      shouldPlay
+                      useNativeControls
+                    />
+                  ) : preview.item?.mediaUrl ? (
+                    <Image source={{ uri: preview.item.mediaUrl }} style={styles.previewMedia} />
+                  ) : null}
+                  <TouchableOpacity style={styles.previewClose} onPress={() => setPreview({ visible: false, item: null })}>
+                    <Text style={styles.previewCloseText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
       </ScrollView>
     </SafeAreaView>
   );
@@ -873,9 +891,9 @@ const styles = StyleSheet.create({
     borderColor: '#e5e7eb',
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
+    width: 90,
+    height: 90,
+    borderRadius: 24,
     backgroundColor: '#e2e8f0',
     alignItems: 'center',
     justifyContent: 'center',
@@ -912,6 +930,12 @@ const styles = StyleSheet.create({
     color: theme.text,
     fontWeight: '700',
     fontSize: 24,
+  },
+  avatarPlaceholderText: {
+    color: theme.secondary,
+    fontWeight: '700',
+    fontSize: 12,
+    marginTop: 4,
   },
   title: {
     color: theme.text,
@@ -1091,6 +1115,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 8,
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  previewContent: {
+    width: '100%',
+    height: '80%',
+    alignItems: 'center',
+  },
+  previewMedia: {
+    width: '100%',
+    height: '90%',
+  },
+  previewClose: {
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#111827',
+    borderRadius: 10,
+  },
+  previewCloseText: {
+    color: '#ffffff',
+    fontWeight: '700',
   },
   sectionTitle: {
     color: theme.text,
