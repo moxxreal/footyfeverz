@@ -866,13 +866,16 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: tabBarHeight + 10,
     backgroundColor: 'transparent',
   },
   feedBottom: {
     flex: 1,
     paddingRight: 12,
     gap: 6,
+    justifyContent: 'flex-end',
   },
   uploaderRow: {
     flexDirection: 'row',
@@ -935,6 +938,7 @@ const styles = StyleSheet.create({
     width: 70,
     alignItems: 'center',
     gap: 14,
+    marginBottom: tabBarHeight + 30,
   },
   actionStack: {
     alignItems: 'center',
