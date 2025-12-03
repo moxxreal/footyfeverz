@@ -33,7 +33,7 @@ import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 
 const Tab = createBottomTabNavigator();
 const { height: screenHeight } = Dimensions.get('window');
-const cardHeight = Math.round(screenHeight - 140);
+const cardHeight = Math.round(screenHeight);
 
 const theme = {
   background: '#f5f7fb',
@@ -529,7 +529,7 @@ const FeedScreen = () => {
           offset: cardHeight * index,
           index,
         })}
-        contentContainerStyle={{ paddingBottom: 96 }}
+        contentContainerStyle={{ paddingBottom: 80 }}
       />
       <TouchableOpacity style={styles.fab} onPress={handleAddClip} activeOpacity={0.9}>
         <Ionicons name="add" size={28} color={theme.background} />
@@ -844,9 +844,9 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: theme.card,
     borderColor: '#e5e7eb',
-    borderWidth: 1,
-    borderRadius: 18,
-    marginVertical: 8,
+    borderWidth: 0,
+    borderRadius: 0,
+    marginVertical: 0,
     overflow: 'hidden',
   },
   tiktokImage: {
