@@ -37,7 +37,7 @@ const Tab = createBottomTabNavigator();
 const { height: screenHeight } = Dimensions.get('window');
 const tabBarHeight = 66;
 const cardHeight = Math.round(screenHeight - tabBarHeight);
-const logoSource = require('./assets/splash-icon.png');
+const logoSource = require('./assets/footyfeverz-logo.png');
 
 const theme = {
   background: '#f5f7fb',
