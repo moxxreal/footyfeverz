@@ -508,7 +508,7 @@ const FeedScreen = () => {
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
         snapToInterval={cardHeight}
-        snapToAlignment="start"
+        snapToAlignment="center"
         decelerationRate="fast"
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
@@ -519,6 +519,9 @@ const FeedScreen = () => {
         bounces={false}
         overScrollMode="never"
         scrollEventThrottle={16}
+        disableIntervalMomentum
+        snapToStart
+        snapToEnd
         getItemLayout={(_, index) => ({
           length: cardHeight,
           offset: cardHeight * index,
