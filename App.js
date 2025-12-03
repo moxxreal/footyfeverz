@@ -17,6 +17,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  Animated,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
@@ -793,17 +794,16 @@ const ForumScreen = () => (
     <FlatList
       data={teams}
       keyExtractor={(item) => item}
-      contentContainerStyle={styles.scroll}
+      numColumns={2}
+      contentContainerStyle={styles.forumGrid}
+      columnWrapperStyle={{ gap: 12 }}
       renderItem={({ item }) => (
-        <TouchableOpacity style={styles.teamCard}>
-          <View style={styles.teamBadge}>
-            <Text style={styles.teamBadgeText}>{item.slice(0, 1)}</Text>
+        <TouchableOpacity activeOpacity={0.85} style={styles.forumCard}>
+          <View style={styles.forumLogoPlaceholder}>
+            <Text style={styles.forumLogoText}>Logo</Text>
           </View>
-          <View>
-            <Text style={styles.teamName}>{item}</Text>
-            <Text style={styles.muted}>Tap to enter the discussion</Text>
-          </View>
-          <MaterialCommunityIcons name="chevron-right" size={22} color={theme.muted} />
+          <Text style={styles.forumTeamLabel}>{item}</Text>
+          <Text style={styles.forumHint}>Tap to add team logo</Text>
         </TouchableOpacity>
       )}
     />
@@ -1062,6 +1062,50 @@ const styles = StyleSheet.create({
     color: theme.text,
     fontWeight: '600',
     fontSize: 13,
+  },
+  forumGrid: {
+    padding: 16,
+    gap: 12,
+  },
+  forumCard: {
+    flex: 1,
+    minHeight: 150,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  forumLogoPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#f2f4f7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  forumLogoText: {
+    color: theme.muted,
+    fontWeight: '700',
+  },
+  forumTeamLabel: {
+    color: theme.text,
+    fontWeight: '700',
+    marginTop: 10,
+  },
+  forumHint: {
+    color: theme.muted,
+    fontSize: 12,
+    marginTop: 4,
   },
   modalOverlay: {
     flex: 1,
