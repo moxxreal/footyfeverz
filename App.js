@@ -229,7 +229,7 @@ const FeedScreen = ({ onReady }) => {
   const db = useMemo(() => getDb(), []);
   const storage = useMemo(() => getStorageInstance(), []);
   const videoRefs = useRef({});
-  const [activeId, setActiveId] = useState(fallbackFeed[0]?.id || null);
+  const [activeId, setActiveId] = useState(null);
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
     if (viewableItems?.length) {
