@@ -877,9 +877,9 @@ const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: '#ffffff',
     borderTopColor: '#e5e7eb',
-    height: tabBarHeight,
-    paddingBottom: 10,
-    paddingTop: 10,
+    height: tabBarHeight + 8,
+    paddingBottom: 12,
+    paddingTop: 6,
   },
   // TikTok-style feed styles
   tiktokCard: {
