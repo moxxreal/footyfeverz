@@ -592,6 +592,12 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [loaderMinDuration]);
 
+  useEffect(() => {
+    // Safety in case onLoad isn't fired by the image component
+    const timer = setTimeout(() => setLogoLoaded(true), 1200);
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleFeedReady = useCallback(() => {
     setFeedReady(true);
   }, []);
@@ -628,6 +634,7 @@ export default function App() {
               <Animated.Image
                 source={logoSource}
                 onLoad={() => setLogoLoaded(true)}
+                onLoadEnd={() => setLogoLoaded(true)}
                 onError={() => setLogoLoaded(false)}
                 style={[styles.loaderImage, { transform: [{ scale }], opacity }]}
               />
@@ -1008,13 +1015,13 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   loaderImage: {
-    width: 180,
-    height: 180,
+    width: 240,
+    height: 240,
     resizeMode: 'contain',
   },
   loaderFallback: {
     position: 'absolute',
-    bottom: tabBarHeight + 40,
+    bottom: tabBarHeight + 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
