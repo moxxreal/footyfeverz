@@ -375,6 +375,7 @@ const FeedScreen = ({ onReady }) => {
             likes: data.likes || 0,
             comments: data.comments || 0,
             mediaType: data.mediaType || 'image',
+            commentsList: data.commentsList || [],
           };
         });
         setFeed(items);
@@ -428,6 +429,26 @@ const FeedScreen = ({ onReady }) => {
       };
     }, [])
   );
+
+  const handleSubmitComment = useCallback(() => {
+    if (!commentModal.item || !commentModal.text.trim()) {
+      setCommentModal({ visible: false, item: null, text: '' });
+      return;
+    }
+    const newComment = { author: currentUser, text: commentModal.text.trim() };
+    setFeed((prev) =>
+      prev.map((it) =>
+        it.id === commentModal.item.id
+          ? {
+              ...it,
+              comments: (it.comments || 0) + 1,
+              commentsList: [...(it.commentsList || []), newComment],
+            }
+          : it
+      )
+    );
+    setCommentModal({ visible: false, item: null, text: '' });
+  }, [commentModal]);
 
   const uploadToStorage = useCallback(
     async (uri, isVideo) => {
@@ -696,8 +717,7 @@ const FeedScreen = ({ onReady }) => {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
-                  Alert.alert('Comment', 'Comments will post in a future update.');
-                  setCommentModal({ visible: false, item: null, text: '' });
+                  handleSubmitComment();
                 }}
               >
                 <Text style={styles.addBioText}>Send</Text>
