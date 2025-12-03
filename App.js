@@ -623,9 +623,9 @@ export default function App() {
             })}
           >
             <Tab.Screen name="Profile" component={ProfileScreen} />
-            <Tab.Screen name="Games" component={GamesScreen} />
-            <Tab.Screen name="Feed" component={FeedScreen} />
             <Tab.Screen name="Forum" component={ForumScreen} />
+            <Tab.Screen name="Feed" component={FeedScreen} />
+            <Tab.Screen name="Games" component={GamesScreen} />
           </Tab.Navigator>
         </NavigationContainer>
       </SafeAreaProvider>
