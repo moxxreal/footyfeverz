@@ -28,6 +28,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  where,
 } from 'firebase/firestore';
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 
@@ -152,49 +153,95 @@ const getStorageInstance = () => {
   }
 };
 
-const ProfileScreen = () => (
-  <SafeAreaView style={styles.screen}>
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <View style={styles.heroCard}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>FF</Text>
-        </View>
-        <Text style={styles.title}>Footy Fever</Text>
-        <Text style={styles.muted}>Ultra since 2005 ┬À Global</Text>
-        <View style={styles.badges}>
-          <View style={[styles.badge, { backgroundColor: theme.highlight }]}>
-            <Ionicons name="flash" size={16} color={theme.background} />
-            <Text style={[styles.badgeText, { color: theme.background }]}>Fast Breaks</Text>
-          </View>
-          <View style={[styles.badge, { backgroundColor: theme.card, borderColor: theme.secondary }]}>
-            <MaterialCommunityIcons name="shield-star" size={16} color={theme.secondary} />
-            <Text style={[styles.badgeText, { color: theme.secondary }]}>Club Captain</Text>
-          </View>
-        </View>
-      </View>
+const fallbackUploads = [
+  {
+    id: "up1",
+    title: "Training ground screamer",
+    mediaUrl: "https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1200&q=80",
+    mediaType: "image",
+  },
+  {
+    id: "up2",
+    title: "Matchday tifo",
+    mediaUrl: "https://images.unsplash.com/photo-1521417531058-0fdfbdd7e9bf?auto=format&fit=crop&w=1200&q=80",
+    mediaType: "image",
+  },
+];
 
-      <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Stats</Text>
-        <View style={styles.statRow}>
-          <Stat label="Matches watched" value="432" />
-          <Stat label="Clips liked" value="1.2k" />
-          <Stat label="Forum posts" value="87" />
-        </View>
-      </View>
+const ProfileScreen = () => {
+  const [uploads, setUploads] = useState(fallbackUploads);
+  const db = useMemo(() => getDb(), []);
 
-      <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Favorite Clubs</Text>
-        <View style={styles.clubRow}>
-          {['Real Madrid', 'Barcelona', 'PSG'].map((club) => (
-            <View key={club} style={styles.clubChip}>
-              <Text style={styles.clubText}>{club}</Text>
+  useEffect(() => {
+    if (!db) return undefined;
+    const q = query(collection(db, "feed"), where("uploader", "==", "@you"), orderBy("createdAt", "desc"));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            title: data.title || "Untitled",
+            mediaUrl: data.mediaUrl || data.thumbnail || "",
+            mediaType: data.mediaType || "image",
+          };
+        });
+        if (list.length) setUploads(list);
+      },
+      (err) => console.warn("Profile uploads failed", err)
+    );
+  }, [db]);
+
+  return (
+    <SafeAreaView style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <View style={styles.heroCard}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>FF</Text>
+          </View>
+          <Text style={styles.title}>Footy Fever</Text>
+          <Text style={styles.muted}>Ultra since 2005 · Global</Text>
+          <Text style={styles.bio}>Collecting match moments and terrace energy.</Text>
+          <View style={styles.badges}>
+            <View style={[styles.badge, { backgroundColor: theme.highlight }]}>
+              <Ionicons name="flash" size={16} color={theme.background} />
+              <Text style={[styles.badgeText, { color: theme.background }]}>Creator</Text>
             </View>
-          ))}
+            <View style={[styles.badge, { backgroundColor: theme.card, borderColor: theme.secondary }]}>
+              <MaterialCommunityIcons name="shield-star" size={16} color={theme.secondary} />
+              <Text style={[styles.badgeText, { color: theme.secondary }]}>Club Captain</Text>
+            </View>
+          </View>
         </View>
-      </View>
-    </ScrollView>
-  </SafeAreaView>
-);
+
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Uploads</Text>
+          {uploads.length === 0 ? (
+            <Text style={styles.muted}>No uploads yet. Share your first clip!</Text>
+          ) : (
+            <View style={styles.uploadGrid}>
+              {uploads.map((item) => (
+                <View key={item.id} style={styles.uploadCard}>
+                  {item.mediaUrl ? (
+                    <Image source={{ uri: item.mediaUrl }} style={styles.uploadImage} />
+                  ) : (
+                    <View style={[styles.uploadImage, styles.imageFallback]}>
+                      <Ionicons name="image" size={24} color={theme.muted} />
+                    </View>
+                  )}
+                  <Text numberOfLines={1} style={styles.uploadTitle}>
+                    {item.title}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+};
 
 const GamesScreen = () => (
   <SafeAreaView style={styles.screen}>
@@ -660,6 +707,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 8,
   },
+  bio: {
+    color: theme.muted,
+    fontSize: 14,
+    marginTop: 10,
+    textAlign: 'center',
+  },
   statRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -694,6 +747,26 @@ const styles = StyleSheet.create({
   clubText: {
     color: theme.text,
     fontWeight: '600',
+  },
+  uploadGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  uploadCard: {
+    width: '30%',
+  },
+  uploadImage: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    backgroundColor: '#eef2f7',
+    marginBottom: 6,
+  },
+  uploadTitle: {
+    color: theme.text,
+    fontWeight: '600',
+    fontSize: 13,
   },
   sectionTitle: {
     color: theme.text,
@@ -950,4 +1023,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 });
+
 
