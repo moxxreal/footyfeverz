@@ -559,6 +559,8 @@ const formatCount = (count) => {
 
 export default function App() {
   const [feedReady, setFeedReady] = useState(false);
+  const [logoLoaded, setLogoLoaded] = useState(false);
+  const [loaderVisible, setLoaderVisible] = useState(true);
   const loaderStart = useRef(Date.now());
   const loaderMinDuration = 1000;
   const pulse = useRef(new Animated.Value(0)).current;
@@ -591,6 +593,15 @@ export default function App() {
     setTimeout(() => setFeedReady(true), remaining);
   }, [loaderMinDuration]);
 
+  useEffect(() => {
+    if (feedReady && logoLoaded && loaderVisible) {
+      const elapsed = Date.now() - loaderStart.current;
+      const remaining = Math.max(0, loaderMinDuration - elapsed);
+      const timer = setTimeout(() => setLoaderVisible(false), remaining);
+      return () => clearTimeout(timer);
+    }
+  }, [feedReady, logoLoaded, loaderVisible, loaderMinDuration]);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -618,9 +629,13 @@ export default function App() {
             </Tab.Screen>
             <Tab.Screen name="Forum" component={ForumScreen} />
           </Tab.Navigator>
-          {!feedReady && (
+          {loaderVisible && (
             <View style={styles.loaderOverlay} pointerEvents="none">
-              <Animated.Image source={logoSource} style={[styles.loaderImage, { transform: [{ scale }], opacity }]} />
+              <Animated.Image
+                source={logoSource}
+                onLoad={() => setLogoLoaded(true)}
+                style={[styles.loaderImage, { transform: [{ scale }], opacity }]}
+              />
             </View>
           )}
         </NavigationContainer>
