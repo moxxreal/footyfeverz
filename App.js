@@ -36,6 +36,8 @@ const Tab = createBottomTabNavigator();
 const { height: screenHeight } = Dimensions.get('window');
 const tabBarHeight = 66;
 const cardHeight = Math.round(screenHeight - tabBarHeight);
+const currentUser = '@you'; // replace with real handle when auth is added
+const currentUser = '@you'; // Set this to the signed-in user handle when auth is added
 
 const theme = {
   background: '#f5f7fb',
@@ -361,6 +363,10 @@ const FeedScreen = ({ onReady }) => {
   );
 
   const handleAddClip = useCallback(async () => {
+    if (!currentUser || currentUser === '@guest') {
+      Alert.alert('Sign in required', 'You need to be signed in to upload.');
+      return;
+    }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Permission needed', 'Enable photo/video library access to add a clip.');
@@ -401,7 +407,7 @@ const FeedScreen = ({ onReady }) => {
           description: 'Describe your moment...',
           mediaUrl: uploadedUrl,
           thumbnail: thumb,
-          uploader: '@you',
+          uploader: currentUser,
           likes: 0,
           comments: 0,
           mediaType: isVideo ? 'video' : 'image',
@@ -428,7 +434,7 @@ const FeedScreen = ({ onReady }) => {
         description: 'Describe your moment...',
         mediaUrl: uploadedUrl,
         thumbnail: thumb,
-        uploader: '@you',
+        uploader: currentUser,
         likes: 0,
         comments: 0,
         mediaType: isVideo ? 'video' : 'image',
