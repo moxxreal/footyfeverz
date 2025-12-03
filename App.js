@@ -185,7 +185,6 @@ const ProfileScreen = () => {
   const [avatarUri, setAvatarUri] = useState(null);
   const [bio, setBio] = useState('');
   const [showBioInput, setShowBioInput] = useState(false);
-  const [uploadPlaying, setUploadPlaying] = useState({});
   const [preview, setPreview] = useState({ visible: false, item: null });
   const db = useMemo(() => getDb(), []);
 
@@ -235,7 +234,6 @@ const ProfileScreen = () => {
                 <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
               ) : (
                 <View style={styles.avatar}>
-                  <Ionicons name="camera" size={20} color={theme.secondary} />
                   <Text style={styles.avatarPlaceholderText}>Upload photo</Text>
                 </View>
               )}
@@ -280,21 +278,15 @@ const ProfileScreen = () => {
                   onPress={() => setPreview({ visible: true, item })}
                 >
                   {item.mediaType === 'video' ? (
-                    <TouchableOpacity
-                      activeOpacity={0.85}
-                      onPress={() =>
-                        setUploadPlaying((prev) => ({ ...prev, [item.id]: !prev[item.id] }))
-                      }
-                    >
-                      <Video
-                        source={{ uri: item.mediaUrl }}
-                        style={styles.uploadImage}
-                        resizeMode="cover"
-                        isMuted={false}
-                        shouldPlay={!!uploadPlaying[item.id]}
-                        useNativeControls
-                      />
-                    </TouchableOpacity>
+                    <Video
+                      source={{ uri: item.mediaUrl }}
+                      style={styles.uploadImage}
+                      resizeMode="cover"
+                      shouldPlay={false}
+                      isMuted
+                      usePoster
+                      posterSource={item.mediaUrl ? { uri: item.mediaUrl } : undefined}
+                    />
                   ) : item.mediaUrl ? (
                     <Image source={{ uri: item.mediaUrl }} style={styles.uploadImage} />
                   ) : (
