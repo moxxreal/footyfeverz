@@ -35,6 +35,10 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  updateDoc,
+  arrayUnion,
+  doc,
+  increment,
   where,
 } from 'firebase/firestore';
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
@@ -434,12 +438,12 @@ const FeedScreen = ({ onReady }) => {
     }, [])
   );
 
-  const handleSubmitComment = useCallback(() => {
+  const handleSubmitComment = useCallback(async () => {
     if (!commentModal.item || !commentModal.text.trim()) {
       setCommentModal({ visible: false, item: null, text: '' });
       return;
     }
-    const newComment = { author: currentUser, text: commentModal.text.trim() };
+    const newComment = { author: currentUser || '@anon', text: commentModal.text.trim(), createdAt: Date.now() };
     setFeed((prev) =>
       prev.map((it) =>
         it.id === commentModal.item.id
@@ -451,8 +455,18 @@ const FeedScreen = ({ onReady }) => {
           : it
       )
     );
+    if (db) {
+      try {
+        await updateDoc(doc(db, 'feed', commentModal.item.id), {
+          commentsList: arrayUnion(newComment),
+          comments: increment(1),
+        });
+      } catch (err) {
+        console.warn('Persist comment failed', err);
+      }
+    }
     setCommentModal({ visible: false, item: null, text: '' });
-  }, [commentModal]);
+  }, [commentModal, db]);
 
   const uploadToStorage = useCallback(
     async (uri, isVideo) => {
