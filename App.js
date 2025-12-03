@@ -468,6 +468,27 @@ const FeedScreen = ({ onReady }) => {
     setCommentModal({ visible: false, item: null, text: '' });
   }, [commentModal, db]);
 
+  const handleToggleLike = useCallback(
+    async (item) => {
+      const wasLiked = !!liked[item.id];
+      const delta = wasLiked ? -1 : 1;
+      setLiked((prev) => ({ ...prev, [item.id]: !wasLiked }));
+      setFeed((prev) =>
+        prev.map((it) =>
+          it.id === item.id ? { ...it, likes: Math.max(0, (it.likes || 0) + delta) } : it
+        )
+      );
+      if (db) {
+        try {
+          await updateDoc(doc(db, 'feed', item.id), { likes: increment(delta) });
+        } catch (err) {
+          console.warn('Persist like failed', err);
+        }
+      }
+    },
+    [db, liked]
+  );
+
   const uploadToStorage = useCallback(
     async (uri, isVideo) => {
       if (!storage) throw new Error('Storage not configured');
@@ -630,10 +651,7 @@ const FeedScreen = ({ onReady }) => {
           </View>
 
           <View style={styles.actionRail}>
-            <TouchableOpacity
-              style={styles.actionStack}
-              onPress={() => setLiked((prev) => ({ ...prev, [item.id]: !prev[item.id] }))}
-            >
+            <TouchableOpacity style={styles.actionStack} onPress={() => handleToggleLike(item)}>
               <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={32} color="#ffffff" />
               <Text style={styles.actionStackLabel}>
                 {isLiked ? formatCount(item.likes + 1) : formatCount(item.likes)}
