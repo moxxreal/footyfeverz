@@ -33,7 +33,8 @@ import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 
 const Tab = createBottomTabNavigator();
 const { height: screenHeight } = Dimensions.get('window');
-const cardHeight = Math.round(screenHeight);
+const tabBarHeight = 66;
+const cardHeight = Math.round(screenHeight - tabBarHeight);
 
 const theme = {
   background: '#f5f7fb',
@@ -835,7 +836,7 @@ const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: '#ffffff',
     borderTopColor: '#e5e7eb',
-    height: 66,
+    height: tabBarHeight,
     paddingBottom: 10,
     paddingTop: 10,
   },
