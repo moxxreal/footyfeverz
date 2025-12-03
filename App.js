@@ -15,7 +15,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import { Video } from 'expo-av';
-import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, useFocusEffect } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -172,11 +172,13 @@ const fallbackUploads = [
 
 const ProfileScreen = () => {
   const [uploads, setUploads] = useState(fallbackUploads);
+  const [avatarUri, setAvatarUri] = useState(null);
+  const [bio, setBio] = useState('Collecting match moments and terrace energy.');
   const db = useMemo(() => getDb(), []);
 
   useEffect(() => {
     if (!db) return undefined;
-    const q = query(collection(db, "feed"), where("uploader", "==", "@you"), orderBy("createdAt", "desc"));
+    const q = query(collection(db, 'feed'), where('uploader', '==', '@you'), orderBy('createdAt', 'desc'));
     return onSnapshot(
       q,
       (snapshot) => {
@@ -184,27 +186,60 @@ const ProfileScreen = () => {
           const data = doc.data();
           return {
             id: doc.id,
-            title: data.title || "Untitled",
-            mediaUrl: data.mediaUrl || data.thumbnail || "",
-            mediaType: data.mediaType || "image",
+            title: data.title || 'Untitled',
+            mediaUrl: data.mediaUrl || data.thumbnail || '',
+            mediaType: data.mediaType || 'image',
           };
         });
         if (list.length) setUploads(list);
       },
-      (err) => console.warn("Profile uploads failed", err)
+      (err) => console.warn('Profile uploads failed', err)
     );
   }, [db]);
+
+  const handlePickAvatar = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Enable photo library access to update your photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+    if (result.canceled) return;
+    const uri = result.assets?.[0]?.uri;
+    if (uri) setAvatarUri(uri);
+  };
 
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.heroCard}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>FF</Text>
-          </View>
+          <TouchableOpacity onPress={handlePickAvatar} activeOpacity={0.8}>
+            <View style={styles.avatarWrapper}>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+              ) : (
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>FF</Text>
+                </View>
+              )}
+              <View style={styles.avatarEditBadge}>
+                <Ionicons name="camera" size={16} color={theme.background} />
+              </View>
+            </View>
+          </TouchableOpacity>
           <Text style={styles.title}>Footy Fever</Text>
           <Text style={styles.muted}>Ultra since 2005 · Global</Text>
-          <Text style={styles.bio}>Collecting match moments and terrace energy.</Text>
+          <TextInput
+            style={styles.bioInput}
+            value={bio}
+            onChangeText={setBio}
+            placeholder="Write your bio"
+            placeholderTextColor={theme.muted}
+            multiline
+          />
           <View style={styles.badges}>
             <View style={[styles.badge, { backgroundColor: theme.highlight }]}>
               <Ionicons name="flash" size={16} color={theme.background} />
@@ -225,7 +260,15 @@ const ProfileScreen = () => {
             <View style={styles.uploadGrid}>
               {uploads.map((item) => (
                 <View key={item.id} style={styles.uploadCard}>
-                  {item.mediaUrl ? (
+                  {item.mediaType === 'video' ? (
+                    <Video
+                      source={{ uri: item.mediaUrl }}
+                      style={styles.uploadImage}
+                      resizeMode="cover"
+                      isMuted
+                      shouldPlay={false}
+                    />
+                  ) : item.mediaUrl ? (
                     <Image source={{ uri: item.mediaUrl }} style={styles.uploadImage} />
                   ) : (
                     <View style={[styles.uploadImage, styles.imageFallback]}>
@@ -276,6 +319,7 @@ const FeedScreen = ({ onReady }) => {
   const storage = useMemo(() => getStorageInstance(), []);
   const videoRefs = useRef({});
   const [activeId, setActiveId] = useState(null);
+  const [isFocused, setIsFocused] = useState(true);
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
     if (viewableItems?.length) {
@@ -335,7 +379,7 @@ const FeedScreen = ({ onReady }) => {
     const currentKey = activeId;
     Object.entries(videoRefs.current).forEach(([id, ref]) => {
       if (!ref) return;
-      if (id === currentKey) {
+      if (id === currentKey && isFocused) {
         ref.playAsync?.();
         ref.setStatusAsync?.({ shouldPlay: true, isMuted: false });
       } else {
@@ -343,7 +387,20 @@ const FeedScreen = ({ onReady }) => {
         ref.setStatusAsync?.({ shouldPlay: false, isMuted: true });
       }
     });
-  }, [activeId]);
+  }, [activeId, isFocused]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setIsFocused(true);
+      return () => {
+        setIsFocused(false);
+        Object.values(videoRefs.current).forEach((ref) => {
+          ref?.pauseAsync?.();
+          ref?.setStatusAsync?.({ shouldPlay: false, isMuted: true });
+        });
+      };
+    }, [])
+  );
 
   const uploadToStorage = useCallback(
     async (uri, isVideo) => {
@@ -459,9 +516,9 @@ const FeedScreen = ({ onReady }) => {
             source={{ uri: item.mediaUrl }}
             style={styles.tiktokImage}
             resizeMode="cover"
-            shouldPlay={isActive}
+            shouldPlay={isActive && isFocused}
             isLooping
-            isMuted={!isActive}
+            isMuted={!isActive || !isFocused}
             useNativeControls={false}
             usePoster
             posterSource={item.thumbnail ? { uri: item.thumbnail } : undefined}
