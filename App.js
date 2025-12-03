@@ -17,6 +17,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import { Video } from 'expo-av';
 import { Asset } from 'expo-asset';
+import { Image as RNImage } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -595,14 +596,21 @@ export default function App() {
   }, [loaderMinDuration]);
 
   useEffect(() => {
-    // Preload the logo to ensure it renders on the splash overlay
+    // Preload and resolve the logo to ensure it renders on the splash overlay
+    const resolved = RNImage.resolveAssetSource(logoSource);
+    if (resolved?.uri) {
+      setLogoUri(resolved.uri);
+    }
     Asset.fromModule(logoSource)
       .downloadAsync()
       .then((asset) => {
-        setLogoUri(asset.localUri || asset.uri);
+        setLogoUri((prev) => prev || asset.localUri || asset.uri);
         setLogoLoaded(true);
       })
-      .catch(() => setLogoLoaded(true));
+      .catch((err) => {
+        console.warn('Logo preload failed', err);
+        setLogoLoaded(true);
+      });
   }, []);
 
   useEffect(() => {
@@ -648,7 +656,10 @@ export default function App() {
                 source={logoUri ? { uri: logoUri } : logoSource}
                 onLoad={() => setLogoLoaded(true)}
                 onLoadEnd={() => setLogoLoaded(true)}
-                onError={() => setLogoLoaded(false)}
+                onError={(e) => {
+                  console.warn('Logo failed to render', e?.nativeEvent?.error);
+                  setLogoLoaded(false);
+                }}
                 style={[styles.loaderImage, { transform: [{ scale }], opacity }]}
               />
               {!logoLoaded && (
