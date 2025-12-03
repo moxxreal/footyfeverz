@@ -11,8 +11,12 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
   Share,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
@@ -688,43 +692,56 @@ const FeedScreen = ({ onReady }) => {
         <Text style={styles.fabText}>Add clip</Text>
       </TouchableOpacity>
       <Modal visible={commentModal.visible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.panelTitle}>Comments</Text>
-            <View style={styles.commentList}>
-              {(commentModal.item?.commentsList || []).length === 0 ? (
-                <Text style={styles.muted}>No comments yet.</Text>
-              ) : (
-                commentModal.item.commentsList.map((c, idx) => (
-                  <View key={idx} style={styles.commentBubble}>
-                    <Text style={styles.commentAuthor}>{c.author || 'Anon'}</Text>
-                    <Text style={styles.commentText}>{c.text || ''}</Text>
-                  </View>
-                ))
-              )}
-            </View>
-            <TextInput
-              style={styles.commentInput}
-              value={commentModal.text}
-              onChangeText={(text) => setCommentModal((prev) => ({ ...prev, text }))}
-              placeholder="Write a comment"
-              placeholderTextColor={theme.muted}
-              multiline
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setCommentModal({ visible: false, item: null, text: '' })}>
-                <Text style={styles.addBioText}>Close</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  handleSubmitComment();
-                }}
-              >
-                <Text style={styles.addBioText}>Send</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+        <TouchableWithoutFeedback
+          onPress={() => {
+            Keyboard.dismiss();
+            setCommentModal({ visible: false, item: null, text: '' });
+          }}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalOverlay}
+          >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={styles.modalCard}>
+                <Text style={styles.panelTitle}>Comments</Text>
+                <ScrollView style={styles.commentList} contentContainerStyle={{ gap: 8 }}>
+                  {(commentModal.item?.commentsList || []).length === 0 ? (
+                    <Text style={styles.muted}>No comments yet.</Text>
+                  ) : (
+                    commentModal.item.commentsList.map((c, idx) => (
+                      <View key={idx} style={styles.commentBubble}>
+                        <Text style={styles.commentAuthor}>{c.author || 'Anon'}</Text>
+                        <Text style={styles.commentText}>{c.text || ''}</Text>
+                      </View>
+                    ))
+                  )}
+                </ScrollView>
+                <TextInput
+                  style={styles.commentInput}
+                  value={commentModal.text}
+                  onChangeText={(text) => setCommentModal((prev) => ({ ...prev, text }))}
+                  placeholder="Write a comment"
+                  placeholderTextColor={theme.muted}
+                  multiline
+                />
+                <View style={styles.modalActions}>
+                  <TouchableOpacity onPress={() => setCommentModal({ visible: false, item: null, text: '' })}>
+                    <Text style={styles.addBioText}>Close</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      handleSubmitComment();
+                      Keyboard.dismiss();
+                    }}
+                  >
+                    <Text style={styles.addBioText}>Send</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
       </Modal>
     </SafeAreaView>
   );
