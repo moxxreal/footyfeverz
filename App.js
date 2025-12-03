@@ -37,7 +37,6 @@ const { height: screenHeight } = Dimensions.get('window');
 const tabBarHeight = 66;
 const cardHeight = Math.round(screenHeight - tabBarHeight);
 const currentUser = '@you'; // replace with real handle when auth is added
-const currentUser = '@you'; // Set this to the signed-in user handle when auth is added
 
 const theme = {
   background: '#f5f7fb',
