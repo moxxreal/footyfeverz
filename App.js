@@ -507,7 +507,6 @@ const FeedScreen = () => {
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
-        pagingEnabled
         snapToInterval={cardHeight}
         snapToAlignment="start"
         decelerationRate="fast"
@@ -517,6 +516,9 @@ const FeedScreen = () => {
         maxToRenderPerBatch={2}
         windowSize={4}
         removeClippedSubviews
+        bounces={false}
+        overScrollMode="never"
+        scrollEventThrottle={16}
         getItemLayout={(_, index) => ({
           length: cardHeight,
           offset: cardHeight * index,
