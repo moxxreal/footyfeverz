@@ -16,6 +16,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import { Video } from 'expo-av';
+import { Asset } from 'expo-asset';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -561,6 +562,7 @@ export default function App() {
   const [feedReady, setFeedReady] = useState(false);
   const [logoLoaded, setLogoLoaded] = useState(false);
   const [minDurationDone, setMinDurationDone] = useState(false);
+  const [logoUri, setLogoUri] = useState(null);
   const loaderStart = useRef(Date.now());
   const loaderMinDuration = 1000;
   const pulse = useRef(new Animated.Value(0)).current;
@@ -591,6 +593,17 @@ export default function App() {
     const timer = setTimeout(() => setMinDurationDone(true), loaderMinDuration);
     return () => clearTimeout(timer);
   }, [loaderMinDuration]);
+
+  useEffect(() => {
+    // Preload the logo to ensure it renders on the splash overlay
+    Asset.fromModule(logoSource)
+      .downloadAsync()
+      .then((asset) => {
+        setLogoUri(asset.localUri || asset.uri);
+        setLogoLoaded(true);
+      })
+      .catch(() => setLogoLoaded(true));
+  }, []);
 
   useEffect(() => {
     // Safety in case onLoad isn't fired by the image component
@@ -632,7 +645,7 @@ export default function App() {
           {!(feedReady && minDurationDone) && (
             <View style={styles.loaderOverlay} pointerEvents="none">
               <Animated.Image
-                source={logoSource}
+                source={logoUri ? { uri: logoUri } : logoSource}
                 onLoad={() => setLogoLoaded(true)}
                 onLoadEnd={() => setLogoLoaded(true)}
                 onError={() => setLogoLoaded(false)}
