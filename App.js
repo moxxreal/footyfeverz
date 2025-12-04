@@ -782,7 +782,6 @@ const ForumScreen = () => (
             <Image source={item.logo} style={styles.forumLogoImage} resizeMode="contain" />
           </View>
           <Text style={styles.forumTeamLabel}>{item.name}</Text>
-          <Text style={styles.forumHint}>Tap to edit this slot</Text>
         </TouchableOpacity>
       )}
     />
