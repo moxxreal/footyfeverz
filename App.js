@@ -796,7 +796,7 @@ const ForumScreen = () => {
         <KeyboardAvoidingView
           style={styles.forumDetailContainer}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight + 40 : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={{ flex: 1 }}>
@@ -825,25 +825,26 @@ const ForumScreen = () => {
                     </View>
                   ))
                 )}
-                <View style={styles.commentForm}>
-                  <TextInput
-                    style={styles.commentInput}
-                    value={commentText}
-                    onChangeText={setCommentText}
-                    placeholder="Add a post..."
-                    placeholderTextColor={theme.muted}
-                    multiline
-                    returnKeyType="send"
-                    onSubmitEditing={handleSendComment}
-                    onFocus={() => {
-                      setTimeout(() => detailScrollRef.current?.scrollToEnd({ animated: true }), 50);
-                    }}
-                  />
-                  <TouchableOpacity style={styles.commentSendButton} onPress={handleSendComment}>
-                    <Text style={styles.commentSendText}>Post</Text>
-                  </TouchableOpacity>
-                </View>
+                <View style={{ height: 12 }} />
               </ScrollView>
+              <View style={styles.commentFormFixed}>
+                <TextInput
+                  style={styles.commentInput}
+                  value={commentText}
+                  onChangeText={setCommentText}
+                  placeholder="Add a post..."
+                  placeholderTextColor={theme.muted}
+                  multiline
+                  returnKeyType="send"
+                  onSubmitEditing={handleSendComment}
+                  onFocus={() => {
+                    setTimeout(() => detailScrollRef.current?.scrollToEnd({ animated: true }), 50);
+                  }}
+                />
+                <TouchableOpacity style={styles.commentSendButton} onPress={handleSendComment}>
+                  <Text style={styles.commentSendText}>Post</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
@@ -1213,6 +1214,12 @@ const styles = StyleSheet.create({
     marginTop: 12,
     gap: 8,
     marginBottom: 16,
+  },
+  commentFormFixed: {
+    paddingTop: 8,
+    paddingBottom: 4,
+    gap: 8,
+    backgroundColor: '#ffffff',
   },
   commentSend: {
     alignSelf: 'flex-end',
