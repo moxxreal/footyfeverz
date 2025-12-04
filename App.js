@@ -878,7 +878,7 @@ const ForumScreen = () => {
         <KeyboardAvoidingView
           style={styles.forumDetailContainer}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight : 0}
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={{ flex: 1 }}>
@@ -893,6 +893,7 @@ const ForumScreen = () => {
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
                 showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
                 scrollEnabled
               >
                 <View style={styles.forumLogoContainerModal}>
@@ -1434,7 +1435,7 @@ const styles = StyleSheet.create({
   },
   forumDetailContent: {
     gap: 12,
-    paddingBottom: 140,
+    paddingBottom: 220,
     flexGrow: 1,
   },
   sectionTitle: {
