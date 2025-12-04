@@ -818,7 +818,7 @@ const ForumScreen = () => {
         <KeyboardAvoidingView
           style={styles.forumDetailContainer}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={{ flex: 1 }}>
@@ -850,7 +850,7 @@ const ForumScreen = () => {
                     </View>
                   ))
                 )}
-                <View style={{ height: 80 }} />
+                <View style={{ height: 12 }} />
               </ScrollView>
               <View style={styles.commentFormFixed}>
                 <TextInput
@@ -1660,8 +1660,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   forumLogoImageModal: {
-    width: '80%',
-    height: 180,
+    width: '60%',
+    height: 140,
     resizeMode: 'contain',
   },
   forumTeamLabelModal: {
