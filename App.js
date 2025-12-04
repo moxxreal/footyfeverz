@@ -781,10 +781,12 @@ const ForumScreen = () => {
   const commentsForTeam = activeTeam ? forumComments[activeTeam.name] || [] : [];
 
   const handleSendComment = () => {
-    if (!activeTeam || !commentText.trim()) return;
+    if (!activeTeam) return;
+    const trimmed = commentText.trim();
+    if (!trimmed && !commentImage) return;
     const newComment = {
       author: currentUser || '@anon',
-      text: commentText.trim(),
+      text: trimmed,
       imageUrl: commentImage || '',
       createdAt: Date.now(),
     };
