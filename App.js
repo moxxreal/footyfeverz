@@ -810,6 +810,7 @@ const ForumScreen = () => {
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
                 showsVerticalScrollIndicator={false}
+                scrollEnabled
               >
                 <View style={styles.forumLogoContainerModal}>
                   <Image source={activeTeam.logo} style={styles.forumLogoImageModal} resizeMode="contain" />
@@ -835,15 +836,24 @@ const ForumScreen = () => {
                   placeholder="Add a post..."
                   placeholderTextColor={theme.muted}
                   multiline
-                  returnKeyType="send"
+                  returnKeyType="default"
                   onSubmitEditing={handleSendComment}
                   onFocus={() => {
                     setTimeout(() => detailScrollRef.current?.scrollToEnd({ animated: true }), 50);
                   }}
                 />
-                <TouchableOpacity style={styles.commentSendButton} onPress={handleSendComment}>
-                  <Text style={styles.commentSendText}>Post</Text>
-                </TouchableOpacity>
+                <View style={styles.commentActionsRow}>
+                  <TouchableOpacity
+                    style={styles.commentAttachButton}
+                    onPress={() => Alert.alert('Add image', 'Image uploads coming soon.')}
+                  >
+                    <Ionicons name="image-outline" size={18} color="#2563eb" />
+                    <Text style={styles.commentAttachText}>Add image</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.commentSendButton} onPress={handleSendComment}>
+                    <Text style={styles.commentSendText}>Post</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           </TouchableWithoutFeedback>
@@ -1221,8 +1231,10 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: '#ffffff',
   },
-  commentSend: {
-    alignSelf: 'flex-end',
+  commentActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   commentInput: {
     minHeight: 80,
@@ -1231,6 +1243,31 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 10,
     color: theme.text,
+  },
+  commentSendButton: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#2563eb',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  commentSendText: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  commentAttachButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  commentAttachText: {
+    color: '#2563eb',
+    fontWeight: '700',
   },
   modalActions: {
     flexDirection: 'row',
@@ -1580,8 +1617,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   forumLogoImageModal: {
-    width: '90%',
-    height: 240,
+    width: '80%',
+    height: 180,
     resizeMode: 'contain',
   },
   forumTeamLabelModal: {
