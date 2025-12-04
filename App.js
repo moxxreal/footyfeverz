@@ -814,48 +814,48 @@ const ForumScreen = () => {
     [db]
   );
 
-  const handleSendComment = () => {
+  const handleSendComment = useCallback(async () => {
     if (!activeTeam) return;
     const trimmed = commentText.trim();
     if (!trimmed && !commentImage) return;
-    const send = async () => {
-      let imageUrl = commentImage || '';
-      if (commentImage) {
-        try {
-          imageUrl = await uploadForumImage(commentImage);
-        } catch (err) {
-          console.warn('Forum image upload failed', err);
-        }
-      }
-      const newComment = {
-        author: currentUser || '@anon',
-        text: trimmed,
-        imageUrl,
-        createdAt: Date.now(),
-      };
-      setForumComments((prev) => ({
-        ...prev,
-        [activeTeam.name]: [...(prev[activeTeam.name] || []), newComment],
-      }));
-      setCommentText('');
-      setCommentImage(null);
-      Keyboard.dismiss();
 
-      if (db) {
-        const teamId = activeTeam.name.toLowerCase().replace(/\s+/g, '-');
-        try {
-          await setDoc(
-            doc(db, 'forums', teamId),
-            { commentsList: arrayUnion(newComment) },
-            { merge: true }
-          );
-        } catch (err) {
-          console.warn('Persist forum comment failed', err);
-        }
+    let imageUrl = '';
+    if (commentImage) {
+      try {
+        imageUrl = await uploadForumImage(commentImage);
+      } catch (err) {
+        console.warn('Forum image upload failed', err);
       }
+    }
+
+    const newComment = {
+      author: currentUser || '@anon',
+      text: trimmed,
+      imageUrl,
+      createdAt: Date.now(),
     };
-    send();
-  };
+
+    setForumComments((prev) => ({
+      ...prev,
+      [activeTeam.name]: [...(prev[activeTeam.name] || []), newComment],
+    }));
+    setCommentText('');
+    setCommentImage(null);
+    Keyboard.dismiss();
+
+    if (db) {
+      const teamId = activeTeam.name.toLowerCase().replace(/\s+/g, '-');
+      try {
+        await setDoc(
+          doc(db, 'forums', teamId),
+          { commentsList: arrayUnion(newComment) },
+          { merge: true }
+        );
+      } catch (err) {
+        console.warn('Persist forum comment failed', err);
+      }
+    }
+  }, [activeTeam, commentText, commentImage, db, uploadForumImage]);
 
   const handleAttachImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -905,7 +905,7 @@ const ForumScreen = () => {
                   commentsForTeam.map((c, idx) => (
                     <View key={`${activeTeam.name}-${idx}`} style={styles.commentBubble}>
                       <Text style={styles.commentAuthor}>{c.author || '@anon'}</Text>
-                      <Text style={styles.commentText}>{c.text}</Text>
+                      {c.text ? <Text style={styles.commentText}>{c.text}</Text> : null}
                       {c.imageUrl ? <Image source={{ uri: c.imageUrl }} style={styles.commentImage} /> : null}
                     </View>
                   ))
@@ -1375,6 +1375,12 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 8,
+  },
+  commentImage: {
+    marginTop: 6,
+    width: '100%',
+    height: 180,
+    borderRadius: 10,
   },
   modalActions: {
     flexDirection: 'row',
