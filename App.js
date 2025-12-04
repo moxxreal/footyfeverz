@@ -794,9 +794,9 @@ const ForumScreen = () => {
       <SafeAreaView style={[styles.screen, { backgroundColor: '#ffffff' }]}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <KeyboardAvoidingView
-            style={[styles.screen, { backgroundColor: '#ffffff', padding: 16 }]}
+            style={styles.forumDetailContainer}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={tabBarHeight + 20}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
           >
             <TouchableOpacity style={styles.forumBackButton} onPress={() => setActiveTeam(null)}>
               <Ionicons name="arrow-back" size={22} color={theme.secondary} />
@@ -805,6 +805,7 @@ const ForumScreen = () => {
             <ScrollView
               contentContainerStyle={styles.forumDetailContent}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.forumLogoContainerModal}>
@@ -1176,6 +1177,11 @@ const styles = StyleSheet.create({
     padding: 10,
     borderWidth: 1,
     borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 6,
+    elevation: 3,
   },
   commentSendButton: {
     alignSelf: 'flex-end',
@@ -1243,6 +1249,11 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '700',
   },
+  forumDetailContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    padding: 16,
+  },
   forumBackButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1255,7 +1266,8 @@ const styles = StyleSheet.create({
   },
   forumDetailContent: {
     gap: 12,
-    paddingBottom: 24,
+    paddingBottom: 32,
+    flexGrow: 1,
   },
   sectionTitle: {
     color: theme.text,
