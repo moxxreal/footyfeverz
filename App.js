@@ -776,18 +776,40 @@ const ForumScreen = () => {
   const [forumComments, setForumComments] = useState({});
   const [commentText, setCommentText] = useState('');
   const detailScrollRef = useRef(null);
+  const [commentImage, setCommentImage] = useState(null);
 
   const commentsForTeam = activeTeam ? forumComments[activeTeam.name] || [] : [];
 
   const handleSendComment = () => {
     if (!activeTeam || !commentText.trim()) return;
-    const newComment = { author: currentUser || '@anon', text: commentText.trim(), createdAt: Date.now() };
+    const newComment = {
+      author: currentUser || '@anon',
+      text: commentText.trim(),
+      imageUrl: commentImage || '',
+      createdAt: Date.now(),
+    };
     setForumComments((prev) => ({
       ...prev,
       [activeTeam.name]: [...(prev[activeTeam.name] || []), newComment],
     }));
     setCommentText('');
+    setCommentImage(null);
     Keyboard.dismiss();
+  };
+
+  const handleAttachImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Enable photo library access to attach an image.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
+    if (result.canceled) return;
+    const uri = result.assets?.[0]?.uri;
+    if (uri) setCommentImage(uri);
   };
 
   if (activeTeam) {
@@ -824,10 +846,11 @@ const ForumScreen = () => {
                     <View key={`${activeTeam.name}-${idx}`} style={styles.commentBubble}>
                       <Text style={styles.commentAuthor}>{c.author || '@anon'}</Text>
                       <Text style={styles.commentText}>{c.text}</Text>
+                      {c.imageUrl ? <Image source={{ uri: c.imageUrl }} style={styles.commentImage} /> : null}
                     </View>
                   ))
                 )}
-                <View style={{ height: 12 }} />
+                <View style={{ height: 80 }} />
               </ScrollView>
               <View style={styles.commentFormFixed}>
                 <TextInput
@@ -843,10 +866,18 @@ const ForumScreen = () => {
                     setTimeout(() => detailScrollRef.current?.scrollToEnd({ animated: true }), 50);
                   }}
                 />
+                {commentImage ? (
+                  <View style={styles.attachPreview}>
+                    <Image source={{ uri: commentImage }} style={styles.attachPreviewImage} />
+                    <TouchableOpacity onPress={() => setCommentImage(null)}>
+                      <Text style={styles.commentAttachText}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
                 <View style={styles.commentActionsRow}>
                   <TouchableOpacity
                     style={styles.commentAttachButton}
-                    onPress={() => Alert.alert('Add image', 'Image uploads coming soon.')}
+                    onPress={handleAttachImage}
                   >
                     <Ionicons name="image-outline" size={18} color="#2563eb" />
                     <Text style={styles.commentAttachText}>Add image</Text>
@@ -1203,7 +1234,6 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   commentSendButton: {
-    alignSelf: 'flex-end',
     backgroundColor: '#2563eb',
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -1269,6 +1299,16 @@ const styles = StyleSheet.create({
   commentAttachText: {
     color: '#2563eb',
     fontWeight: '700',
+  },
+  attachPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  attachPreviewImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
   },
   modalActions: {
     flexDirection: 'row',
