@@ -770,23 +770,91 @@ const FeedScreen = ({ onReady }) => {
   );
 };
 
-const ForumScreen = () => (
-  <SafeAreaView style={styles.screen}>
-    <FlatList
-      data={forumTeams}
-      keyExtractor={(item) => item.name}
-      contentContainerStyle={styles.forumList}
-      renderItem={({ item }) => (
-        <TouchableOpacity activeOpacity={0.9} style={styles.forumCard}>
-          <View style={styles.forumLogoContainer}>
-            <Image source={item.logo} style={styles.forumLogoImage} resizeMode="contain" />
-          </View>
-          <Text style={styles.forumTeamLabel}>{item.name}</Text>
-        </TouchableOpacity>
-      )}
-    />
-  </SafeAreaView>
-);
+const ForumScreen = () => {
+  const [activeTeam, setActiveTeam] = useState(null);
+  const [forumComments, setForumComments] = useState({});
+  const [commentText, setCommentText] = useState('');
+
+  const commentsForTeam = activeTeam ? forumComments[activeTeam.name] || [] : [];
+
+  const handleSendComment = () => {
+    if (!activeTeam) return;
+    if (!commentText.trim()) return;
+    const newComment = { author: currentUser || '@anon', text: commentText.trim(), createdAt: Date.now() };
+    setForumComments((prev) => ({
+      ...prev,
+      [activeTeam.name]: [...(prev[activeTeam.name] || []), newComment],
+    }));
+    setCommentText('');
+    Keyboard.dismiss();
+  };
+
+  return (
+    <SafeAreaView style={styles.screen}>
+      <FlatList
+        data={forumTeams}
+        keyExtractor={(item) => item.name}
+        contentContainerStyle={styles.forumList}
+        renderItem={({ item }) => (
+          <TouchableOpacity activeOpacity={0.9} style={styles.forumCard} onPress={() => setActiveTeam(item)}>
+            <View style={styles.forumLogoContainer}>
+              <Image source={item.logo} style={styles.forumLogoImage} resizeMode="contain" />
+            </View>
+            <Text style={styles.forumTeamLabel}>{item.name}</Text>
+          </TouchableOpacity>
+        )}
+      />
+
+      <Modal visible={!!activeTeam} transparent animationType="slide" onRequestClose={() => setActiveTeam(null)}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <KeyboardAvoidingView
+            style={styles.forumModalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <View style={styles.forumModalCard}>
+              {activeTeam && (
+                <ScrollView contentContainerStyle={styles.forumModalContent}>
+                  <View style={styles.forumLogoContainerModal}>
+                    <Image source={activeTeam.logo} style={styles.forumLogoImageModal} resizeMode="contain" />
+                    <Text style={styles.forumTeamLabelModal}>{activeTeam.name}</Text>
+                  </View>
+                  {commentsForTeam.length === 0 ? (
+                    <Text style={styles.muted}>No posts yet. Start the discussion.</Text>
+                  ) : (
+                    commentsForTeam.map((c, idx) => (
+                      <View key={`${activeTeam.name}-${idx}`} style={styles.commentBubble}>
+                        <Text style={styles.commentAuthor}>{c.author || '@anon'}</Text>
+                        <Text style={styles.commentText}>{c.text}</Text>
+                      </View>
+                    ))
+                  )}
+                  <View style={styles.commentForm}>
+                    <TextInput
+                      style={styles.commentInput}
+                      value={commentText}
+                      onChangeText={setCommentText}
+                      placeholder="Add a post..."
+                      placeholderTextColor={theme.muted}
+                      multiline
+                      returnKeyType="send"
+                      onSubmitEditing={handleSendComment}
+                    />
+                    <TouchableOpacity style={styles.commentSend} onPress={handleSendComment}>
+                      <Text style={styles.addBioText}>Send</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity style={styles.previewClose} onPress={() => setActiveTeam(null)}>
+                    <Text style={styles.previewCloseText}>Close</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              )}
+            </View>
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
+      </Modal>
+    </SafeAreaView>
+  );
+};
 
 const Stat = ({ label, value }) => (
   <View style={styles.statCard}>
@@ -1066,11 +1134,11 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: 14,
   },
   forumLogoImage: {
-    width: '70%',
-    height: 120,
+    width: '80%',
+    height: 150,
     resizeMode: 'contain',
   },
   forumTeamLabel: {
@@ -1110,6 +1178,13 @@ const styles = StyleSheet.create({
   commentText: {
     color: theme.text,
     marginTop: 4,
+  },
+  commentForm: {
+    marginTop: 12,
+    gap: 8,
+  },
+  commentSend: {
+    alignSelf: 'flex-end',
   },
   commentInput: {
     minHeight: 80,
@@ -1404,6 +1479,74 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
     fontSize: 13,
+  },
+  forumList: {
+    padding: 16,
+    gap: 16,
+  },
+  forumCard: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 5 },
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  forumLogoContainer: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+  },
+  forumLogoImage: {
+    width: '80%',
+    height: 150,
+    resizeMode: 'contain',
+  },
+  forumTeamLabel: {
+    color: theme.text,
+    fontWeight: '700',
+    fontSize: 18,
+    marginTop: 4,
+  },
+  forumModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+    padding: 16,
+  },
+  forumModalCard: {
+    maxHeight: '90%',
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  forumModalContent: {
+    gap: 10,
+  },
+  forumLogoContainerModal: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  forumLogoImageModal: {
+    width: '90%',
+    height: 240,
+    resizeMode: 'contain',
+  },
+  forumTeamLabelModal: {
+    color: theme.text,
+    fontWeight: '800',
+    fontSize: 20,
   },
 });
 
