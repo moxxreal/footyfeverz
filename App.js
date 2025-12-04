@@ -799,50 +799,52 @@ const ForumScreen = () => {
           keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight + 40 : 0}
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <TouchableOpacity style={styles.forumBackButton} onPress={() => setActiveTeam(null)}>
-              <Ionicons name="arrow-back" size={22} color={theme.secondary} />
-              <Text style={styles.forumBackText}>Back</Text>
-            </TouchableOpacity>
-            <ScrollView
-              ref={detailScrollRef}
-              contentContainerStyle={styles.forumDetailContent}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.forumLogoContainerModal}>
-                <Image source={activeTeam.logo} style={styles.forumLogoImageModal} resizeMode="contain" />
-                <Text style={styles.forumTeamLabelModal}>{activeTeam.name}</Text>
-              </View>
-              {commentsForTeam.length === 0 ? (
-                <Text style={styles.muted}>No posts yet. Start the discussion.</Text>
-              ) : (
-                commentsForTeam.map((c, idx) => (
-                  <View key={`${activeTeam.name}-${idx}`} style={styles.commentBubble}>
-                    <Text style={styles.commentAuthor}>{c.author || '@anon'}</Text>
-                    <Text style={styles.commentText}>{c.text}</Text>
-                  </View>
-                ))
-              )}
-              <View style={styles.commentForm}>
-                <TextInput
-                  style={styles.commentInput}
-                  value={commentText}
-                  onChangeText={setCommentText}
-                  placeholder="Add a post..."
-                  placeholderTextColor={theme.muted}
-                  multiline
-                  returnKeyType="send"
-                  onSubmitEditing={handleSendComment}
-                  onFocus={() => {
-                    setTimeout(() => detailScrollRef.current?.scrollToEnd({ animated: true }), 50);
-                  }}
-                />
-                <TouchableOpacity style={styles.commentSendButton} onPress={handleSendComment}>
-                  <Text style={styles.commentSendText}>Post</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
+            <View style={{ flex: 1 }}>
+              <TouchableOpacity style={styles.forumBackButton} onPress={() => setActiveTeam(null)}>
+                <Ionicons name="arrow-back" size={22} color={theme.secondary} />
+                <Text style={styles.forumBackText}>Back</Text>
+              </TouchableOpacity>
+              <ScrollView
+                ref={detailScrollRef}
+                contentContainerStyle={styles.forumDetailContent}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.forumLogoContainerModal}>
+                  <Image source={activeTeam.logo} style={styles.forumLogoImageModal} resizeMode="contain" />
+                  <Text style={styles.forumTeamLabelModal}>{activeTeam.name}</Text>
+                </View>
+                {commentsForTeam.length === 0 ? (
+                  <Text style={styles.muted}>No posts yet. Start the discussion.</Text>
+                ) : (
+                  commentsForTeam.map((c, idx) => (
+                    <View key={`${activeTeam.name}-${idx}`} style={styles.commentBubble}>
+                      <Text style={styles.commentAuthor}>{c.author || '@anon'}</Text>
+                      <Text style={styles.commentText}>{c.text}</Text>
+                    </View>
+                  ))
+                )}
+                <View style={styles.commentForm}>
+                  <TextInput
+                    style={styles.commentInput}
+                    value={commentText}
+                    onChangeText={setCommentText}
+                    placeholder="Add a post..."
+                    placeholderTextColor={theme.muted}
+                    multiline
+                    returnKeyType="send"
+                    onSubmitEditing={handleSendComment}
+                    onFocus={() => {
+                      setTimeout(() => detailScrollRef.current?.scrollToEnd({ animated: true }), 50);
+                    }}
+                  />
+                  <TouchableOpacity style={styles.commentSendButton} onPress={handleSendComment}>
+                    <Text style={styles.commentSendText}>Post</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
       </SafeAreaView>
