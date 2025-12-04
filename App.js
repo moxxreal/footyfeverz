@@ -752,14 +752,15 @@ const FeedScreen = ({ onReady }) => {
                   <TouchableOpacity onPress={() => setCommentModal({ visible: false, item: null, text: '' })}>
                     <Text style={styles.addBioText}>Close</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => {
-                      handleSubmitComment();
-                      Keyboard.dismiss();
-                    }}
-                  >
-                    <Text style={styles.addBioText}>Send</Text>
-                  </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.commentSendButton}
+                  onPress={() => {
+                    handleSubmitComment();
+                    Keyboard.dismiss();
+                  }}
+                >
+                  <Text style={styles.commentSendText}>Post</Text>
+                </TouchableOpacity>
                 </View>
               </View>
             </TouchableWithoutFeedback>
@@ -795,12 +796,17 @@ const ForumScreen = () => {
           <KeyboardAvoidingView
             style={[styles.screen, { backgroundColor: '#ffffff', padding: 16 }]}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={tabBarHeight + 20}
           >
             <TouchableOpacity style={styles.forumBackButton} onPress={() => setActiveTeam(null)}>
               <Ionicons name="arrow-back" size={22} color={theme.secondary} />
               <Text style={styles.forumBackText}>Back</Text>
             </TouchableOpacity>
-            <ScrollView contentContainerStyle={styles.forumDetailContent}>
+            <ScrollView
+              contentContainerStyle={styles.forumDetailContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
               <View style={styles.forumLogoContainerModal}>
                 <Image source={activeTeam.logo} style={styles.forumLogoImageModal} resizeMode="contain" />
                 <Text style={styles.forumTeamLabelModal}>{activeTeam.name}</Text>
@@ -826,8 +832,8 @@ const ForumScreen = () => {
                   returnKeyType="send"
                   onSubmitEditing={handleSendComment}
                 />
-                <TouchableOpacity style={styles.commentSend} onPress={handleSendComment}>
-                  <Text style={styles.addBioText}>Send</Text>
+                <TouchableOpacity style={styles.commentSendButton} onPress={handleSendComment}>
+                  <Text style={styles.commentSendText}>Post</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -1170,6 +1176,17 @@ const styles = StyleSheet.create({
     padding: 10,
     borderWidth: 1,
     borderColor: '#e5e7eb',
+  },
+  commentSendButton: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#2563eb',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  commentSendText: {
+    color: '#ffffff',
+    fontWeight: '700',
   },
   commentAuthor: {
     color: theme.secondary,
