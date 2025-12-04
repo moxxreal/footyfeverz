@@ -806,6 +806,7 @@ const ForumScreen = () => {
               </TouchableOpacity>
               <ScrollView
                 ref={detailScrollRef}
+                style={styles.forumDetailScroll}
                 contentContainerStyle={styles.forumDetailContent}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
@@ -1306,6 +1307,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     padding: 16,
   },
+  forumDetailScroll: {
+    flex: 1,
+  },
   forumBackButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1318,8 +1322,7 @@ const styles = StyleSheet.create({
   },
   forumDetailContent: {
     gap: 12,
-    paddingBottom: 32,
-    flexGrow: 1,
+    paddingBottom: 160,
   },
   sectionTitle: {
     color: theme.text,
