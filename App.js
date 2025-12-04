@@ -778,8 +778,7 @@ const ForumScreen = () => {
   const commentsForTeam = activeTeam ? forumComments[activeTeam.name] || [] : [];
 
   const handleSendComment = () => {
-    if (!activeTeam) return;
-    if (!commentText.trim()) return;
+    if (!activeTeam || !commentText.trim()) return;
     const newComment = { author: currentUser || '@anon', text: commentText.trim(), createdAt: Date.now() };
     setForumComments((prev) => ({
       ...prev,
@@ -788,6 +787,54 @@ const ForumScreen = () => {
     setCommentText('');
     Keyboard.dismiss();
   };
+
+  if (activeTeam) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <KeyboardAvoidingView
+            style={[styles.screen, { padding: 16 }]}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <ScrollView contentContainerStyle={styles.forumDetailContent}>
+              <View style={styles.forumLogoContainerModal}>
+                <Image source={activeTeam.logo} style={styles.forumLogoImageModal} resizeMode="contain" />
+                <Text style={styles.forumTeamLabelModal}>{activeTeam.name}</Text>
+              </View>
+              {commentsForTeam.length === 0 ? (
+                <Text style={styles.muted}>No posts yet. Start the discussion.</Text>
+              ) : (
+                commentsForTeam.map((c, idx) => (
+                  <View key={`${activeTeam.name}-${idx}`} style={styles.commentBubble}>
+                    <Text style={styles.commentAuthor}>{c.author || '@anon'}</Text>
+                    <Text style={styles.commentText}>{c.text}</Text>
+                  </View>
+                ))
+              )}
+              <View style={styles.commentForm}>
+                <TextInput
+                  style={styles.commentInput}
+                  value={commentText}
+                  onChangeText={setCommentText}
+                  placeholder="Add a post..."
+                  placeholderTextColor={theme.muted}
+                  multiline
+                  returnKeyType="send"
+                  onSubmitEditing={handleSendComment}
+                />
+                <TouchableOpacity style={styles.commentSend} onPress={handleSendComment}>
+                  <Text style={styles.addBioText}>Send</Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity style={styles.previewClose} onPress={() => setActiveTeam(null)}>
+                <Text style={styles.previewCloseText}>Back</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -804,54 +851,6 @@ const ForumScreen = () => {
           </TouchableOpacity>
         )}
       />
-
-      <Modal visible={!!activeTeam} transparent animationType="slide" onRequestClose={() => setActiveTeam(null)}>
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <KeyboardAvoidingView
-            style={styles.forumModalOverlay}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
-            <View style={styles.forumModalCard}>
-              {activeTeam && (
-                <ScrollView contentContainerStyle={styles.forumModalContent}>
-                  <View style={styles.forumLogoContainerModal}>
-                    <Image source={activeTeam.logo} style={styles.forumLogoImageModal} resizeMode="contain" />
-                    <Text style={styles.forumTeamLabelModal}>{activeTeam.name}</Text>
-                  </View>
-                  {commentsForTeam.length === 0 ? (
-                    <Text style={styles.muted}>No posts yet. Start the discussion.</Text>
-                  ) : (
-                    commentsForTeam.map((c, idx) => (
-                      <View key={`${activeTeam.name}-${idx}`} style={styles.commentBubble}>
-                        <Text style={styles.commentAuthor}>{c.author || '@anon'}</Text>
-                        <Text style={styles.commentText}>{c.text}</Text>
-                      </View>
-                    ))
-                  )}
-                  <View style={styles.commentForm}>
-                    <TextInput
-                      style={styles.commentInput}
-                      value={commentText}
-                      onChangeText={setCommentText}
-                      placeholder="Add a post..."
-                      placeholderTextColor={theme.muted}
-                      multiline
-                      returnKeyType="send"
-                      onSubmitEditing={handleSendComment}
-                    />
-                    <TouchableOpacity style={styles.commentSend} onPress={handleSendComment}>
-                      <Text style={styles.addBioText}>Send</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <TouchableOpacity style={styles.previewClose} onPress={() => setActiveTeam(null)}>
-                    <Text style={styles.previewCloseText}>Close</Text>
-                  </TouchableOpacity>
-                </ScrollView>
-              )}
-            </View>
-          </KeyboardAvoidingView>
-        </TouchableWithoutFeedback>
-      </Modal>
     </SafeAreaView>
   );
 };
@@ -1516,23 +1515,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 18,
     marginTop: 4,
-  },
-  forumModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-    padding: 16,
-  },
-  forumModalCard: {
-    maxHeight: '90%',
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  forumModalContent: {
-    gap: 10,
   },
   forumLogoContainerModal: {
     alignItems: 'center',
