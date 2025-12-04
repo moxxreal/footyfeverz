@@ -31,10 +31,12 @@ import {
   addDoc,
   collection,
   getFirestore,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   arrayUnion,
   doc,
@@ -777,26 +779,82 @@ const ForumScreen = () => {
   const [commentText, setCommentText] = useState('');
   const detailScrollRef = useRef(null);
   const [commentImage, setCommentImage] = useState(null);
+  const db = useMemo(() => getDb(), []);
+  const storage = useMemo(() => getStorageInstance(), []);
 
   const commentsForTeam = activeTeam ? forumComments[activeTeam.name] || [] : [];
+
+  const uploadForumImage = useCallback(
+    async (uri) => {
+      if (!storage || !uri) return uri;
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const extGuess = uri.split('.').pop()?.split('?')[0] || 'jpg';
+      const storageRef = ref(storage, `forum-comments/${Date.now()}-${Math.floor(Math.random() * 10000)}.${extGuess}`);
+      await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+      return getDownloadURL(storageRef);
+    },
+    [storage]
+  );
+
+  const fetchForumComments = useCallback(
+    async (team) => {
+      if (!db || !team) return;
+      const teamId = team.name.toLowerCase().replace(/\s+/g, '-');
+      try {
+        const snap = await getDoc(doc(db, 'forums', teamId));
+        if (snap.exists()) {
+          const data = snap.data();
+          setForumComments((prev) => ({ ...prev, [team.name]: data.commentsList || [] }));
+        }
+      } catch (err) {
+        console.warn('Fetch forum comments failed', err);
+      }
+    },
+    [db]
+  );
 
   const handleSendComment = () => {
     if (!activeTeam) return;
     const trimmed = commentText.trim();
     if (!trimmed && !commentImage) return;
-    const newComment = {
-      author: currentUser || '@anon',
-      text: trimmed,
-      imageUrl: commentImage || '',
-      createdAt: Date.now(),
+    const send = async () => {
+      let imageUrl = commentImage || '';
+      if (commentImage) {
+        try {
+          imageUrl = await uploadForumImage(commentImage);
+        } catch (err) {
+          console.warn('Forum image upload failed', err);
+        }
+      }
+      const newComment = {
+        author: currentUser || '@anon',
+        text: trimmed,
+        imageUrl,
+        createdAt: Date.now(),
+      };
+      setForumComments((prev) => ({
+        ...prev,
+        [activeTeam.name]: [...(prev[activeTeam.name] || []), newComment],
+      }));
+      setCommentText('');
+      setCommentImage(null);
+      Keyboard.dismiss();
+
+      if (db) {
+        const teamId = activeTeam.name.toLowerCase().replace(/\s+/g, '-');
+        try {
+          await setDoc(
+            doc(db, 'forums', teamId),
+            { commentsList: arrayUnion(newComment) },
+            { merge: true }
+          );
+        } catch (err) {
+          console.warn('Persist forum comment failed', err);
+        }
+      }
     };
-    setForumComments((prev) => ({
-      ...prev,
-      [activeTeam.name]: [...(prev[activeTeam.name] || []), newComment],
-    }));
-    setCommentText('');
-    setCommentImage(null);
-    Keyboard.dismiss();
+    send();
   };
 
   const handleAttachImage = async () => {
@@ -902,7 +960,14 @@ const ForumScreen = () => {
         keyExtractor={(item) => item.name}
         contentContainerStyle={styles.forumList}
         renderItem={({ item }) => (
-          <TouchableOpacity activeOpacity={0.9} style={styles.forumCard} onPress={() => setActiveTeam(item)}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            style={styles.forumCard}
+            onPress={() => {
+              setActiveTeam(item);
+              fetchForumComments(item);
+            }}
+          >
             <View style={styles.forumLogoContainer}>
               <Image source={item.logo} style={styles.forumLogoImage} resizeMode="contain" />
             </View>
