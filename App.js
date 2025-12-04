@@ -775,6 +775,7 @@ const ForumScreen = () => {
   const [activeTeam, setActiveTeam] = useState(null);
   const [forumComments, setForumComments] = useState({});
   const [commentText, setCommentText] = useState('');
+  const detailScrollRef = useRef(null);
 
   const commentsForTeam = activeTeam ? forumComments[activeTeam.name] || [] : [];
 
@@ -792,17 +793,18 @@ const ForumScreen = () => {
   if (activeTeam) {
     return (
       <SafeAreaView style={[styles.screen, { backgroundColor: '#ffffff' }]}>
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <KeyboardAvoidingView
-            style={styles.forumDetailContainer}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
-          >
+        <KeyboardAvoidingView
+          style={styles.forumDetailContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight + 40 : 0}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <TouchableOpacity style={styles.forumBackButton} onPress={() => setActiveTeam(null)}>
               <Ionicons name="arrow-back" size={22} color={theme.secondary} />
               <Text style={styles.forumBackText}>Back</Text>
             </TouchableOpacity>
             <ScrollView
+              ref={detailScrollRef}
               contentContainerStyle={styles.forumDetailContent}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
@@ -832,14 +834,17 @@ const ForumScreen = () => {
                   multiline
                   returnKeyType="send"
                   onSubmitEditing={handleSendComment}
+                  onFocus={() => {
+                    setTimeout(() => detailScrollRef.current?.scrollToEnd({ animated: true }), 50);
+                  }}
                 />
                 <TouchableOpacity style={styles.commentSendButton} onPress={handleSendComment}>
                   <Text style={styles.commentSendText}>Post</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          </KeyboardAvoidingView>
-        </TouchableWithoutFeedback>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -1205,6 +1210,7 @@ const styles = StyleSheet.create({
   commentForm: {
     marginTop: 12,
     gap: 8,
+    marginBottom: 16,
   },
   commentSend: {
     alignSelf: 'flex-end',
