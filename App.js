@@ -850,7 +850,6 @@ const ForumScreen = () => {
                     </View>
                   ))
                 )}
-                <View style={{ height: 12 }} />
               </ScrollView>
               <View style={styles.commentFormFixed}>
                 <TextInput
@@ -1362,7 +1361,8 @@ const styles = StyleSheet.create({
   },
   forumDetailContent: {
     gap: 12,
-    paddingBottom: 160,
+    paddingBottom: 140,
+    flexGrow: 1,
   },
   sectionTitle: {
     color: theme.text,
