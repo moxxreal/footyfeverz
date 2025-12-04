@@ -790,12 +790,16 @@ const ForumScreen = () => {
 
   if (activeTeam) {
     return (
-      <SafeAreaView style={styles.screen}>
+      <SafeAreaView style={[styles.screen, { backgroundColor: '#ffffff' }]}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <KeyboardAvoidingView
-            style={[styles.screen, { padding: 16 }]}
+            style={[styles.screen, { backgroundColor: '#ffffff', padding: 16 }]}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
+            <TouchableOpacity style={styles.forumBackButton} onPress={() => setActiveTeam(null)}>
+              <Ionicons name="arrow-back" size={22} color={theme.secondary} />
+              <Text style={styles.forumBackText}>Back</Text>
+            </TouchableOpacity>
             <ScrollView contentContainerStyle={styles.forumDetailContent}>
               <View style={styles.forumLogoContainerModal}>
                 <Image source={activeTeam.logo} style={styles.forumLogoImageModal} resizeMode="contain" />
@@ -826,9 +830,6 @@ const ForumScreen = () => {
                   <Text style={styles.addBioText}>Send</Text>
                 </TouchableOpacity>
               </View>
-              <TouchableOpacity style={styles.previewClose} onPress={() => setActiveTeam(null)}>
-                <Text style={styles.previewCloseText}>Back</Text>
-              </TouchableOpacity>
             </ScrollView>
           </KeyboardAvoidingView>
         </TouchableWithoutFeedback>
@@ -1224,6 +1225,20 @@ const styles = StyleSheet.create({
   previewCloseText: {
     color: '#ffffff',
     fontWeight: '700',
+  },
+  forumBackButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  forumBackText: {
+    color: theme.secondary,
+    fontWeight: '700',
+  },
+  forumDetailContent: {
+    gap: 12,
+    paddingBottom: 24,
   },
   sectionTitle: {
     color: theme.text,
