@@ -345,37 +345,39 @@ const ProfileScreen = ({ route }) => {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: 80 }]}>
-        <View style={styles.profileHeaderRow}>
-          <TouchableOpacity
-            style={styles.settingsButton}
-            onPress={() => setSettingsVisible((v) => !v)}
-          >
-            <Ionicons name="settings-sharp" size={22} color={theme.secondary} />
-          </TouchableOpacity>
-          {settingsVisible ? (
-            <View style={styles.settingsDropdown}>
-              <TouchableOpacity style={styles.settingsItem} onPress={logout}>
-                <Text style={styles.settingsItemText}>Log out</Text>
-              </TouchableOpacity>
+      <TouchableWithoutFeedback onPress={() => settingsVisible && setSettingsVisible(false)}>
+        <View style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: 80 }]}>
+            <View style={styles.profileHeaderRow}>
               <TouchableOpacity
-                style={[styles.settingsItem, styles.deleteButton]}
-                onPress={() =>
-                  Alert.alert('Delete account', 'Type DELETE to confirm', [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Delete',
-                      style: 'destructive',
-                      onPress: () => logout(),
-                    },
-                  ])
-                }
+                style={styles.settingsButton}
+                onPress={() => setSettingsVisible((v) => !v)}
               >
-                <Text style={[styles.settingsItemText, styles.deleteButtonText]}>Delete account</Text>
+                <Ionicons name="settings-sharp" size={22} color={theme.secondary} />
               </TouchableOpacity>
+              {settingsVisible ? (
+                <View style={styles.settingsDropdown}>
+                  <TouchableOpacity style={styles.settingsItem} onPress={logout}>
+                    <Text style={styles.settingsItemText}>Log out</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.settingsItem, styles.deleteButton]}
+                    onPress={() =>
+                      Alert.alert('Delete account', 'Type DELETE to confirm', [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: () => logout(),
+                        },
+                      ])
+                    }
+                  >
+                    <Text style={[styles.settingsItemText, styles.deleteButtonText]}>Delete account</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
             </View>
-          ) : null}
-        </View>
         <View style={styles.heroCard}>
           <View style={styles.avatarRow}>
             <View style={styles.avatarWrapper}>
@@ -2842,7 +2844,7 @@ const styles = StyleSheet.create({
   settingsDropdown: {
     position: 'absolute',
     top: 40,
-    right: 16,
+    left: 16,
     backgroundColor: '#fff',
     borderRadius: 12,
     borderWidth: 1,
