@@ -1089,35 +1089,49 @@ const FeedScreen = ({ onReady }) => {
     const isLiked = liked[item.id];
     const likeCount = item.likes || 0;
     const progress = playbackProgress[item.id] || 0;
+    const videoKey = `video-${item.id}`;
+
+    const onTogglePlay = () => {
+      const ref = videoRefs.current[item.id];
+      if (!ref) return;
+      ref.getStatusAsync?.().then((status) => {
+        const shouldPlay = !status?.isPlaying;
+        ref.setStatusAsync?.({ shouldPlay });
+      });
+    };
+
     return (
       <View style={[styles.tiktokCard, { height: cardHeight }]}>
         {item.mediaType === 'video' && item.mediaUrl ? (
-          <Video
-            ref={(ref) => {
-              if (ref) {
-                videoRefs.current[item.id] = ref;
-              } else {
-                delete videoRefs.current[item.id];
-              }
-            }}
-            source={{ uri: item.mediaUrl }}
-            style={styles.tiktokImage}
-            resizeMode="cover"
-            shouldPlay={isActive && isFocused}
-            isLooping
-            isMuted={!isActive || !isFocused}
-            useNativeControls={false}
-            usePoster
-            posterSource={item.thumbnail ? { uri: item.thumbnail } : undefined}
-            onPlaybackStatusUpdate={(status) => {
-              if (!status.isLoaded || !status.durationMillis) return;
-              const pct = Math.min(1, Math.max(0, status.positionMillis / status.durationMillis));
-              setPlaybackProgress((prev) => {
-                if (prev[item.id] === pct) return prev;
-                return { ...prev, [item.id]: pct };
-              });
-            }}
-          />
+          <TouchableWithoutFeedback onPress={onTogglePlay}>
+            <Video
+              key={videoKey}
+              ref={(ref) => {
+                if (ref) {
+                  videoRefs.current[item.id] = ref;
+                } else {
+                  delete videoRefs.current[item.id];
+                }
+              }}
+              source={{ uri: item.mediaUrl }}
+              style={styles.tiktokImage}
+              resizeMode="cover"
+              shouldPlay={isActive && isFocused}
+              isLooping
+              isMuted={!isActive || !isFocused}
+              useNativeControls={false}
+              usePoster
+              posterSource={item.thumbnail ? { uri: item.thumbnail } : undefined}
+              onPlaybackStatusUpdate={(status) => {
+                if (!status.isLoaded || !status.durationMillis) return;
+                const pct = Math.min(1, Math.max(0, status.positionMillis / status.durationMillis));
+                setPlaybackProgress((prev) => {
+                  if (prev[item.id] === pct) return prev;
+                  return { ...prev, [item.id]: pct };
+                });
+              }}
+            />
+          </TouchableWithoutFeedback>
         ) : item.mediaUrl ? (
           <Image source={{ uri: item.mediaUrl }} style={styles.tiktokImage} />
         ) : (
