@@ -25,10 +25,10 @@ import * as FileSystem from 'expo-file-system';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Video } from 'expo-av';
-import { NavigationContainer, DefaultTheme, useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, useFocusEffect, useNavigation, useNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureHandlerRootView, PanGestureHandler, State } from 'react-native-gesture-handler';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { getApps, initializeApp } from 'firebase/app';
 import {
@@ -1807,33 +1807,69 @@ const AuthProvider = ({ children }) => {
 };
 
 export default function App() {
+  const navigationRef = useNavigationContainerRef();
+  const tabOrder = ['Profile', 'Forum', 'Feed', 'Games'];
+  const [activeTab, setActiveTab] = useState('Feed');
+
+  const handleSwipe = useCallback(
+    (dx, vx) => {
+      const currentIndex = tabOrder.indexOf(activeTab);
+      if (currentIndex === -1) return;
+      if (dx < -40 && vx < -200 && currentIndex < tabOrder.length - 1) {
+        navigationRef.current?.navigate(tabOrder[currentIndex + 1]);
+      } else if (dx > 40 && vx > 200 && currentIndex > 0) {
+        navigationRef.current?.navigate(tabOrder[currentIndex - 1]);
+      }
+    },
+    [activeTab, navigationRef, tabOrder]
+  );
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
-          <NavigationContainer theme={navTheme}>
-            <StatusBar style="light" />
-            <Tab.Navigator
-              initialRouteName="Feed"
-              screenOptions={({ route }) => ({
-                headerShown: false,
-                tabBarStyle: styles.tabBar,
-                tabBarActiveTintColor: theme.highlight,
-                tabBarInactiveTintColor: theme.muted,
-                tabBarIcon: ({ color, size }) => {
-                  if (route.name === 'Profile') return <Ionicons name="person" size={size} color={color} />;
-                  if (route.name === 'Games') return <MaterialCommunityIcons name="soccer" size={size} color={color} />;
-                  if (route.name === 'Feed') return <Ionicons name="play-circle" size={size} color={color} />;
-                  return <FontAwesome5 name="users" size={size - 2} color={color} />;
-                },
-              })}
-            >
-              <Tab.Screen name="Profile" component={ProfileScreen} />
-              <Tab.Screen name="Forum" component={ForumScreen} />
-              <Tab.Screen name="Feed" component={FeedScreen} />
-              <Tab.Screen name="Games" component={GamesScreen} />
-            </Tab.Navigator>
-          </NavigationContainer>
+          <PanGestureHandler
+            activeOffsetY={[-10, 10]}
+            onHandlerStateChange={({ nativeEvent }) => {
+              if (nativeEvent.state === State.END) {
+                handleSwipe(nativeEvent.translationX, nativeEvent.velocityX);
+              }
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <NavigationContainer
+                ref={navigationRef}
+                theme={navTheme}
+                onReady={() => setActiveTab('Feed')}
+                onStateChange={() => {
+                  const route = navigationRef.getCurrentRoute();
+                  if (route?.name) setActiveTab(route.name);
+                }}
+              >
+                <StatusBar style="light" />
+                <Tab.Navigator
+                  initialRouteName="Feed"
+                  screenOptions={({ route }) => ({
+                    headerShown: false,
+                    tabBarStyle: styles.tabBar,
+                    tabBarActiveTintColor: theme.highlight,
+                    tabBarInactiveTintColor: theme.muted,
+                    tabBarIcon: ({ color, size }) => {
+                      if (route.name === 'Profile') return <Ionicons name="person" size={size} color={color} />;
+                      if (route.name === 'Games') return <MaterialCommunityIcons name="soccer" size={size} color={color} />;
+                      if (route.name === 'Feed') return <Ionicons name="play-circle" size={size} color={color} />;
+                      return <FontAwesome5 name="users" size={size - 2} color={color} />;
+                    },
+                  })}
+                >
+                  <Tab.Screen name="Profile" component={ProfileScreen} />
+                  <Tab.Screen name="Forum" component={ForumScreen} />
+                  <Tab.Screen name="Feed" component={FeedScreen} />
+                  <Tab.Screen name="Games" component={GamesScreen} />
+                </Tab.Navigator>
+              </NavigationContainer>
+            </View>
+          </PanGestureHandler>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
