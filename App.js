@@ -536,6 +536,8 @@ const ProfileScreen = ({ route }) => {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+      </View>
+      </TouchableWithoutFeedback>
     </SafeAreaView>
   );
 };
