@@ -1080,13 +1080,12 @@ const FeedScreen = ({ onReady }) => {
     const likeCount = item.likes || 0;
     const progress = playbackProgress[item.id] || 0;
     const videoKey = `video-${item.id}`;
+    const shouldPlay = videoPlayState[item.id] !== undefined ? videoPlayState[item.id] : (isActive && isFocused);
 
     const onTogglePlay = () => {
       const ref = videoRefs.current[item.id];
       const currentPlay = videoPlayState[item.id];
-      const nextShouldPlay = currentPlay === false ? true : currentPlay === true ? false : false === isActive ? false : !currentPlay;
-      // fallback: if undefined, use inverse of active default (which is playing) -> pause on first tap if active, otherwise play
-      const resolved = currentPlay === undefined ? !(isActive && isFocused) : !currentPlay;
+      const resolved = currentPlay === undefined ? false : !currentPlay;
       ref?.setStatusAsync?.({ shouldPlay: resolved });
       setVideoPlayState((prev) => ({ ...prev, [item.id]: resolved }));
     };
@@ -1111,7 +1110,7 @@ const FeedScreen = ({ onReady }) => {
               source={{ uri: item.mediaUrl }}
               style={styles.tiktokImage}
               resizeMode="cover"
-              shouldPlay={isActive && isFocused && videoPlayState[item.id] !== false}
+              shouldPlay={shouldPlay}
               isLooping
               isMuted={!isActive || !isFocused}
               useNativeControls={false}
