@@ -18,6 +18,8 @@ import {
   Platform,
   Keyboard,
   ActivityIndicator,
+  Animated,
+  Easing,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
