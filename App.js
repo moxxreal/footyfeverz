@@ -1867,49 +1867,55 @@ const AuthProvider = ({ children }) => {
       <Modal visible={authVisible} transparent animationType="fade" onRequestClose={() => setAuthVisible(false)}>
         <TouchableWithoutFeedback onPress={() => setAuthVisible(false)}>
           <View style={styles.authModalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.authModalCard}>
-                <Text style={styles.panelTitle}>{authMode === 'signup' ? 'Sign up' : 'Log in'}</Text>
-                <Text style={styles.muted}>Enter your email and password.</Text>
-                <TextInput
-                  style={styles.authInput}
-                  value={authEmail}
-                  onChangeText={setAuthEmail}
-                  placeholder="email"
-                  placeholderTextColor={theme.muted}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                />
-                <TextInput
-                  style={styles.authInput}
-                  value={authPassword}
-                  onChangeText={setAuthPassword}
-                  placeholder="password"
-                  placeholderTextColor={theme.muted}
-                  secureTextEntry
-                />
-                {authMode === 'signup' ? (
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight : 0}
+              style={{ width: '100%' }}
+            >
+              <TouchableWithoutFeedback>
+                <View style={styles.authModalCard}>
+                  <Text style={styles.panelTitle}>{authMode === 'signup' ? 'Sign up' : 'Log in'}</Text>
+                  <Text style={styles.muted}>Enter your email and password.</Text>
                   <TextInput
                     style={styles.authInput}
-                    value={authConfirm}
-                    onChangeText={setAuthConfirm}
-                    placeholder="confirm password"
+                    value={authEmail}
+                    onChangeText={setAuthEmail}
+                    placeholder="email"
+                    placeholderTextColor={theme.muted}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                  />
+                  <TextInput
+                    style={styles.authInput}
+                    value={authPassword}
+                    onChangeText={setAuthPassword}
+                    placeholder="password"
                     placeholderTextColor={theme.muted}
                     secureTextEntry
                   />
-                ) : null}
-                <View style={styles.authModalActions}>
-                  <TouchableOpacity disabled={authLoading} onPress={() => setAuthVisible(false)}>
-                    <Text style={styles.addBioText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.authButton} onPress={completeAuth} disabled={authLoading}>
-                    <Text style={styles.authButtonText}>
-                      {authLoading ? 'Please wait...' : authMode === 'signup' ? 'Sign up' : 'Log in'}
-                    </Text>
-                  </TouchableOpacity>
+                  {authMode === 'signup' ? (
+                    <TextInput
+                      style={styles.authInput}
+                      value={authConfirm}
+                      onChangeText={setAuthConfirm}
+                      placeholder="confirm password"
+                      placeholderTextColor={theme.muted}
+                      secureTextEntry
+                    />
+                  ) : null}
+                  <View style={styles.authModalActions}>
+                    <TouchableOpacity disabled={authLoading} onPress={() => setAuthVisible(false)}>
+                      <Text style={styles.addBioText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.authButton} onPress={completeAuth} disabled={authLoading}>
+                      <Text style={styles.authButtonText}>
+                        {authLoading ? 'Please wait...' : authMode === 'signup' ? 'Sign up' : 'Log in'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            </TouchableWithoutFeedback>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
           </View>
         </TouchableWithoutFeedback>
       </Modal>
