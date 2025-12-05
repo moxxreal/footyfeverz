@@ -708,6 +708,17 @@ const FeedScreen = ({ onReady }) => {
   }, [feed, isFocused]);
 
   useEffect(() => {
+    // Auto-play the newly active video when focused
+    if (!activeId || !isFocused) return;
+    const ref = videoRefs.current[activeId];
+    if (ref) {
+      ref.playAsync?.();
+      ref.setStatusAsync?.({ shouldPlay: true, isMuted: false });
+      setVideoPlayState((prev) => ({ ...prev, [activeId]: true }));
+    }
+  }, [activeId, isFocused]);
+
+  useEffect(() => {
     likedRef.current = liked;
   }, [liked]);
 
@@ -1088,16 +1099,15 @@ const FeedScreen = ({ onReady }) => {
     const likeCount = item.likes || 0;
     const progress = playbackProgress[item.id] || 0;
     const videoKey = `video-${item.id}`;
-    const shouldPlay = videoPlayState[item.id] !== undefined ? videoPlayState[item.id] : (isActive && isFocused);
+    const isManuallyPaused = videoPlayState[item.id] === false;
+    const shouldPlay = isActive && isFocused && !isManuallyPaused;
 
     const onTogglePlay = () => {
       const ref = videoRefs.current[item.id];
       if (!ref) return;
-      ref.getStatusAsync?.().then((status) => {
-        const resolved = !status?.isPlaying;
-        ref.setStatusAsync?.({ shouldPlay: resolved });
-        setVideoPlayState((prev) => ({ ...prev, [item.id]: resolved }));
-      });
+      const next = videoPlayState[item.id] === false ? true : false;
+      setVideoPlayState((prev) => ({ ...prev, [item.id]: next ? true : false }));
+      ref.setStatusAsync?.({ shouldPlay: next, isMuted: false });
     };
 
     return (
