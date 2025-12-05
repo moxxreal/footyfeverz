@@ -579,6 +579,7 @@ const FeedScreen = ({ onReady }) => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [playbackProgress, setPlaybackProgress] = useState({});
+  const [videoPlayState, setVideoPlayState] = useState({});
   const db = useMemo(() => getDb(), []);
   const storage = useMemo(() => getStorageInstance(), []);
   const videoRefs = useRef({});
@@ -1093,11 +1094,12 @@ const FeedScreen = ({ onReady }) => {
 
     const onTogglePlay = () => {
       const ref = videoRefs.current[item.id];
-      if (!ref) return;
-      ref.getStatusAsync?.().then((status) => {
-        const shouldPlay = !status?.isPlaying;
-        ref.setStatusAsync?.({ shouldPlay });
-      });
+      const currentPlay = videoPlayState[item.id];
+      const nextShouldPlay = currentPlay === false ? true : currentPlay === true ? false : false === isActive ? false : !currentPlay;
+      // fallback: if undefined, use inverse of active default (which is playing) -> pause on first tap if active, otherwise play
+      const resolved = currentPlay === undefined ? !(isActive && isFocused) : !currentPlay;
+      ref?.setStatusAsync?.({ shouldPlay: resolved });
+      setVideoPlayState((prev) => ({ ...prev, [item.id]: resolved }));
     };
 
     return (
@@ -1116,7 +1118,7 @@ const FeedScreen = ({ onReady }) => {
               source={{ uri: item.mediaUrl }}
               style={styles.tiktokImage}
               resizeMode="cover"
-              shouldPlay={isActive && isFocused}
+              shouldPlay={isActive && isFocused && videoPlayState[item.id] !== false}
               isLooping
               isMuted={!isActive || !isFocused}
               useNativeControls={false}
@@ -1124,6 +1126,12 @@ const FeedScreen = ({ onReady }) => {
               posterSource={item.thumbnail ? { uri: item.thumbnail } : undefined}
               onPlaybackStatusUpdate={(status) => {
                 if (!status.isLoaded || !status.durationMillis) return;
+                if (typeof status.isPlaying === 'boolean') {
+                  setVideoPlayState((prev) => {
+                    if (prev[item.id] === status.isPlaying) return prev;
+                    return { ...prev, [item.id]: status.isPlaying };
+                  });
+                }
                 const pct = Math.min(1, Math.max(0, status.positionMillis / status.durationMillis));
                 setPlaybackProgress((prev) => {
                   if (prev[item.id] === pct) return prev;
