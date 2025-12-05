@@ -641,6 +641,10 @@ const FeedScreen = ({ onReady }) => {
           const next = reset ? items : [...prev, ...items];
           return dedupeById(next);
         });
+        if (!reset && !activeId && items.length) {
+          setActiveId(items[0].id);
+          setVideoPlayState((prev) => ({ ...prev, [items[0].id]: true }));
+        }
         if (!hasLoaded) {
           setHasLoaded(true);
           onReady?.();
@@ -691,6 +695,7 @@ const FeedScreen = ({ onReady }) => {
     if (!feed.length) return;
     if (!activeId || !feed.find((item) => item.id === activeId)) {
       setActiveId(feed[0].id);
+      setVideoPlayState((prev) => ({ ...prev, [feed[0].id]: true }));
     }
   }, [feed, activeId]);
 
@@ -1095,6 +1100,10 @@ const FeedScreen = ({ onReady }) => {
               ref={(ref) => {
                 if (ref) {
                   videoRefs.current[item.id] = ref;
+                  if (isActive) {
+                    ref.playAsync?.();
+                    ref.setStatusAsync?.({ shouldPlay: true, isMuted: false });
+                  }
                 } else {
                   delete videoRefs.current[item.id];
                 }
