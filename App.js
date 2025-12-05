@@ -28,7 +28,7 @@ import { Video } from 'expo-av';
 import { NavigationContainer, DefaultTheme, useFocusEffect, useNavigation, useNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { GestureHandlerRootView, PanGestureHandler, State } from 'react-native-gesture-handler';
+import { GestureHandlerRootView, GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { getApps, initializeApp } from 'firebase/app';
 import {
@@ -1810,33 +1810,49 @@ export default function App() {
   const navigationRef = useNavigationContainerRef();
   const tabOrder = ['Profile', 'Forum', 'Feed', 'Games'];
   const [activeTab, setActiveTab] = useState('Feed');
+  const [dragX, setDragX] = useState(0);
+  const animatedTransition = useRef(new Animated.Value(0)).current;
 
   const handleSwipe = useCallback(
     (dx, vx) => {
       const currentIndex = tabOrder.indexOf(activeTab);
       if (currentIndex === -1) return;
       if (dx < -40 && vx < -200 && currentIndex < tabOrder.length - 1) {
+        Animated.sequence([
+          Animated.timing(animatedTransition, { toValue: -20, duration: 100, useNativeDriver: true }),
+          Animated.timing(animatedTransition, { toValue: 0, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        ]).start();
         navigationRef.current?.navigate(tabOrder[currentIndex + 1]);
       } else if (dx > 40 && vx > 200 && currentIndex > 0) {
+        Animated.sequence([
+          Animated.timing(animatedTransition, { toValue: 20, duration: 100, useNativeDriver: true }),
+          Animated.timing(animatedTransition, { toValue: 0, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        ]).start();
         navigationRef.current?.navigate(tabOrder[currentIndex - 1]);
       }
     },
-    [activeTab, navigationRef, tabOrder]
+    [activeTab, navigationRef, tabOrder, animatedTransition]
+  );
+
+  const swipeGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY([-60, 60]) // allow shallow vertical drift
+        .minDistance(20)
+        .onUpdate(({ translationX }) => setDragX(translationX))
+        .onEnd(({ translationX, velocityX }) => {
+          setDragX(0);
+          handleSwipe(translationX, velocityX);
+        }),
+    [handleSwipe]
   );
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
-          <PanGestureHandler
-            activeOffsetY={[-10, 10]}
-            onHandlerStateChange={({ nativeEvent }) => {
-              if (nativeEvent.state === State.END) {
-                handleSwipe(nativeEvent.translationX, nativeEvent.velocityX);
-              }
-            }}
-          >
-            <View style={{ flex: 1 }}>
+          <GestureDetector gesture={swipeGesture}>
+            <Animated.View style={{ flex: 1, transform: [{ translateX: Animated.add(animatedTransition, new Animated.Value(dragX * 0.08)) }] }}>
               <NavigationContainer
                 ref={navigationRef}
                 theme={navTheme}
@@ -1868,8 +1884,8 @@ export default function App() {
                   <Tab.Screen name="Games" component={GamesScreen} />
                 </Tab.Navigator>
               </NavigationContainer>
-            </View>
-          </PanGestureHandler>
+            </Animated.View>
+          </GestureDetector>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
