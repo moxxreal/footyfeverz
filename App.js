@@ -546,7 +546,6 @@ const GamesScreen = () => (
   <SafeAreaView style={styles.screen}>
     <View style={[styles.panel, { flex: 1, justifyContent: 'center', alignItems: 'center' }]}>
       <Text style={styles.panelTitle}>Games coming soon...</Text>
-      <Text style={styles.muted}>We’re adding live fixtures and scores shortly.</Text>
     </View>
   </SafeAreaView>
 );
