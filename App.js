@@ -325,23 +325,23 @@ const ProfileScreen = ({ route }) => {
   };
 
   if (isGuest) {
-    return (
-      <SafeAreaView style={styles.screen}>
-        <View style={[styles.heroCard, { alignItems: 'center' }]}>
-          <Text style={styles.title}>Welcome to FootyFeverz</Text>
-          <Text style={styles.muted}>Log in or sign up to view your profile and uploads.</Text>
-          <View style={styles.authRow}>
-            <TouchableOpacity style={styles.authButton} onPress={signup}>
-              <Text style={styles.authButtonText}>Sign up</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.authButton, styles.authButtonOutline]} onPress={login}>
-              <Text style={[styles.authButtonText, { color: theme.secondary }]}>Log in</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </SafeAreaView>
-    );
-  }
+   return (
+     <SafeAreaView style={styles.screen}>
+       <View style={[styles.heroCard, { alignItems: 'center' }]}>
+         <Text style={styles.title}>Welcome to FootyFeverz</Text>
+         <Text style={styles.muted}>Log in or sign up to view your profile and uploads.</Text>
+         <View style={styles.authRow}>
+           <TouchableOpacity style={styles.authButton} onPress={signup}>
+             <Text style={styles.authButtonText}>Sign up</Text>
+           </TouchableOpacity>
+           <TouchableOpacity style={[styles.authButton, styles.authButtonOutline]} onPress={login}>
+             <Text style={[styles.authButtonText, { color: theme.secondary }]}>Log in</Text>
+           </TouchableOpacity>
+         </View>
+       </View>
+     </SafeAreaView>
+   );
+ }
 
   return (
     <SafeAreaView style={styles.screen}>
