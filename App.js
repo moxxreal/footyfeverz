@@ -209,6 +209,7 @@ const ProfileScreen = ({ route }) => {
   const [followingList, setFollowingList] = useState([]);
   const [followersList, setFollowersList] = useState([]);
   const [listModal, setListModal] = useState({ visible: false, type: 'following' });
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
   useEffect(() => {
     if (!db || !viewedHandle) return undefined;
@@ -328,7 +329,37 @@ const ProfileScreen = ({ route }) => {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: 140 }]}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: 80 }]}>
+        <View style={styles.profileHeaderRow}>
+          <TouchableOpacity
+            style={styles.settingsButton}
+            onPress={() => setSettingsVisible((v) => !v)}
+          >
+            <Ionicons name="settings-sharp" size={22} color={theme.secondary} />
+          </TouchableOpacity>
+          {settingsVisible ? (
+            <View style={styles.settingsDropdown}>
+              <TouchableOpacity style={styles.settingsItem} onPress={logout}>
+                <Text style={styles.settingsItemText}>Log out</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.settingsItem, styles.deleteButton]}
+                onPress={() =>
+                  Alert.alert('Delete account', 'Type DELETE to confirm', [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Delete',
+                      style: 'destructive',
+                      onPress: () => logout(),
+                    },
+                  ])
+                }
+              >
+                <Text style={[styles.settingsItemText, styles.deleteButtonText]}>Delete account</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
         <View style={styles.heroCard}>
           <View style={styles.avatarRow}>
             <View style={styles.avatarWrapper}>
@@ -487,29 +518,6 @@ const ProfileScreen = ({ route }) => {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-      <View style={styles.bottomButtons}>
-        <TouchableOpacity
-          style={[styles.authButton, styles.authButtonOutline, styles.bottomButtonHalf]}
-          onPress={logout}
-        >
-          <Text style={[styles.authButtonText, { color: theme.secondary }]}>Log out</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.authButton, styles.deleteButton, styles.bottomButtonHalf]}
-          onPress={() =>
-            Alert.alert('Delete account', 'Type DELETE to confirm', [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Delete',
-                style: 'destructive',
-                onPress: () => logout(),
-              },
-            ])
-          }
-        >
-          <Text style={[styles.authButtonText, styles.deleteButtonText]}>Delete account</Text>
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
   );
 };
@@ -2161,19 +2169,6 @@ const styles = StyleSheet.create({
     color: '#b91c1c',
     fontWeight: '800',
   },
-  bottomButtons: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 16,
-    flexDirection: 'row',
-    gap: 12,
-  },
-  bottomButtonHalf: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   authSubtle: {
     color: theme.muted,
     fontSize: 12,
@@ -2813,6 +2808,44 @@ const styles = StyleSheet.create({
   },
   followStatButton: {
     padding: 8,
+  },
+  profileHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    marginTop: 4,
+  },
+  settingsButton: {
+    padding: 8,
+    borderRadius: 10,
+    backgroundColor: '#eef2f7',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  settingsDropdown: {
+    position: 'absolute',
+    top: 40,
+    right: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 8,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 10,
+  },
+  settingsItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  settingsItemText: {
+    color: theme.secondary,
+    fontWeight: '700',
   },
   kickoffText: {
     color: '#ffffff',
