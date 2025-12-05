@@ -1306,6 +1306,8 @@ const ForumScreen = () => {
   const [previewState, setPreviewState] = useState({ visible: false, handle: null });
   const [previewUploads, setPreviewUploads] = useState([]);
   const [previewFollowing, setPreviewFollowing] = useState(false);
+  const [previewFollowingList, setPreviewFollowingList] = useState([]);
+  const [previewFollowersList, setPreviewFollowersList] = useState([]);
 
   const commentsForTeam = activeTeam ? forumComments[activeTeam.name] || [] : [];
 
