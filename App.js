@@ -563,7 +563,6 @@ const FeedScreen = ({ onReady }) => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [playbackProgress, setPlaybackProgress] = useState({});
-  const [videoPlayState, setVideoPlayState] = useState({});
   const db = useMemo(() => getDb(), []);
   const storage = useMemo(() => getStorageInstance(), []);
   const videoRefs = useRef({});
@@ -643,7 +642,6 @@ const FeedScreen = ({ onReady }) => {
         });
         if (!reset && !activeId && items.length) {
           setActiveId(items[0].id);
-          setVideoPlayState((prev) => ({ ...prev, [items[0].id]: true }));
         }
         if (!hasLoaded) {
           setHasLoaded(true);
@@ -695,38 +693,22 @@ const FeedScreen = ({ onReady }) => {
     if (!feed.length) return;
     if (!activeId || !feed.find((item) => item.id === activeId)) {
       setActiveId(feed[0].id);
-      setVideoPlayState((prev) => ({ ...prev, [feed[0].id]: true }));
     }
   }, [feed, activeId]);
 
   useEffect(() => {
-    const first = feed[0];
-    if (first && isFocused) {
-      setActiveId((id) => id || first.id);
-      setVideoPlayState((prev) => ({ ...prev, [first.id]: true }));
-    }
-  }, [feed, isFocused]);
-
-  useEffect(() => {
-    if (!feed.length || !isFocused) return;
-    const firstId = feed[0].id;
-    const ref = videoRefs.current[firstId];
-    if (ref) {
-      ref.setStatusAsync?.({ shouldPlay: true, isMuted: false });
-      ref.playAsync?.();
-      setVideoPlayState((prev) => ({ ...prev, [firstId]: true }));
-    }
-  }, [feed, isFocused]);
-
-  useEffect(() => {
-    // Auto-play the newly active video when focused
-    if (!activeId || !isFocused) return;
-    const ref = videoRefs.current[activeId];
-    if (ref) {
-      ref.playAsync?.();
-      ref.setStatusAsync?.({ shouldPlay: true, isMuted: false });
-      setVideoPlayState((prev) => ({ ...prev, [activeId]: true }));
-    }
+    // Auto-play/pause based on active card focus
+    const currentKey = activeId;
+    Object.entries(videoRefs.current).forEach(([id, ref]) => {
+      if (!ref) return;
+      if (id === currentKey && isFocused) {
+        ref.playAsync?.();
+        ref.setStatusAsync?.({ shouldPlay: true, isMuted: false });
+      } else {
+        ref.pauseAsync?.();
+        ref.setStatusAsync?.({ shouldPlay: false, isMuted: true });
+      }
+    });
   }, [activeId, isFocused]);
 
   useEffect(() => {
@@ -1110,17 +1092,14 @@ const FeedScreen = ({ onReady }) => {
     const likeCount = item.likes || 0;
     const progress = playbackProgress[item.id] || 0;
     const videoKey = `video-${item.id}`;
-    const isManuallyPaused = videoPlayState[item.id] === false;
-    const shouldPlay = isActive && isFocused && !isManuallyPaused;
+    const shouldPlay = isActive && isFocused;
 
     const onTogglePlay = () => {
       const ref = videoRefs.current[item.id];
       if (!ref) return;
       ref.getStatusAsync?.().then((status) => {
-        const currentlyPlaying = status?.isPlaying || status?.shouldPlay;
-        const next = !currentlyPlaying;
+        const next = !status?.isPlaying;
         ref.setStatusAsync?.({ shouldPlay: next, isMuted: false });
-        setVideoPlayState((prev) => ({ ...prev, [item.id]: next }));
       });
     };
 
@@ -1133,13 +1112,6 @@ const FeedScreen = ({ onReady }) => {
               ref={(ref) => {
                 if (ref) {
                   videoRefs.current[item.id] = ref;
-                  if (isActive) {
-                    ref.playAsync?.();
-                    ref.setStatusAsync?.({ shouldPlay: true, isMuted: false });
-                    setVideoPlayState((prev) =>
-                      prev[item.id] === undefined ? { ...prev, [item.id]: true } : prev
-                    );
-                  }
                 } else {
                   delete videoRefs.current[item.id];
                 }
@@ -1155,12 +1127,6 @@ const FeedScreen = ({ onReady }) => {
               posterSource={item.thumbnail ? { uri: item.thumbnail } : undefined}
               onPlaybackStatusUpdate={(status) => {
                 if (!status.isLoaded || !status.durationMillis) return;
-                if (typeof status.isPlaying === 'boolean') {
-                  setVideoPlayState((prev) => {
-                    if (prev[item.id] === status.isPlaying) return prev;
-                    return { ...prev, [item.id]: status.isPlaying };
-                  });
-                }
                 const pct = Math.min(1, Math.max(0, status.positionMillis / status.durationMillis));
                 setPlaybackProgress((prev) => {
                   if (prev[item.id] === pct) return prev;
