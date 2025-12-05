@@ -700,6 +700,14 @@ const FeedScreen = ({ onReady }) => {
   }, [feed, activeId]);
 
   useEffect(() => {
+    const first = feed[0];
+    if (first && isFocused) {
+      setActiveId((id) => id || first.id);
+      setVideoPlayState((prev) => ({ ...prev, [first.id]: true }));
+    }
+  }, [feed, isFocused]);
+
+  useEffect(() => {
     likedRef.current = liked;
   }, [liked]);
 
@@ -1084,10 +1092,12 @@ const FeedScreen = ({ onReady }) => {
 
     const onTogglePlay = () => {
       const ref = videoRefs.current[item.id];
-      const currentPlay = videoPlayState[item.id];
-      const resolved = currentPlay === undefined ? false : !currentPlay;
-      ref?.setStatusAsync?.({ shouldPlay: resolved });
-      setVideoPlayState((prev) => ({ ...prev, [item.id]: resolved }));
+      if (!ref) return;
+      ref.getStatusAsync?.().then((status) => {
+        const resolved = !status?.isPlaying;
+        ref.setStatusAsync?.({ shouldPlay: resolved });
+        setVideoPlayState((prev) => ({ ...prev, [item.id]: resolved }));
+      });
     };
 
     return (
@@ -1102,6 +1112,9 @@ const FeedScreen = ({ onReady }) => {
                   if (isActive) {
                     ref.playAsync?.();
                     ref.setStatusAsync?.({ shouldPlay: true, isMuted: false });
+                    setVideoPlayState((prev) =>
+                      prev[item.id] === undefined ? { ...prev, [item.id]: true } : prev
+                    );
                   }
                 } else {
                   delete videoRefs.current[item.id];
