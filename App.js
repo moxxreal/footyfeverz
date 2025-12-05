@@ -206,6 +206,9 @@ const ProfileScreen = ({ route }) => {
   const isGuest = !user || user === '@guest';
   const isOwnProfile = !viewedHandle || viewedHandle === user;
   const [isFollowing, setIsFollowing] = useState(false);
+  const [followingList, setFollowingList] = useState([]);
+  const [followersList, setFollowersList] = useState([]);
+  const [listModal, setListModal] = useState({ visible: false, type: 'following' });
 
   useEffect(() => {
     if (!db || !viewedHandle) return undefined;
@@ -226,6 +229,25 @@ const ProfileScreen = ({ route }) => {
       },
       (err) => console.warn('Profile uploads failed', err)
     );
+  }, [db, viewedHandle]);
+
+  useEffect(() => {
+    if (!db || !viewedHandle) return;
+    (async () => {
+      try {
+        const targetDoc = await getDoc(doc(db, 'follows', viewedHandle));
+        setFollowingList(targetDoc.exists() ? targetDoc.data()?.following || [] : []);
+        const snaps = await getDocs(collection(db, 'follows'));
+        const followers = [];
+        snaps.forEach((d) => {
+          const arr = d.data()?.following || [];
+          if (arr.includes(viewedHandle)) followers.push(d.id);
+        });
+        setFollowersList(followers);
+      } catch (err) {
+        console.warn('Load follows failed', err);
+      }
+    })();
   }, [db, viewedHandle]);
 
   useEffect(() => {
@@ -330,6 +352,22 @@ const ProfileScreen = ({ route }) => {
               </TouchableOpacity>
             </View>
           ) : null}
+          <View style={styles.followListRow}>
+            <TouchableOpacity
+              style={styles.followStatButton}
+              onPress={() => setListModal({ visible: true, type: 'following' })}
+            >
+              <Text style={styles.followListLabel}>Following</Text>
+              <Text style={styles.followListCount}>{followingList.length}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.followStatButton}
+              onPress={() => setListModal({ visible: true, type: 'followers' })}
+            >
+              <Text style={styles.followListLabel}>Followers</Text>
+              <Text style={styles.followListCount}>{followersList.length}</Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity style={styles.addBioButton} onPress={() => setShowBioInput((s) => !s)}>
             <Text style={styles.addBioText}>{bio ? 'Edit bio' : 'Add bio'}</Text>
           </TouchableOpacity>
@@ -414,6 +452,41 @@ const ProfileScreen = ({ route }) => {
           </TouchableWithoutFeedback>
         </Modal>
       </ScrollView>
+      <Modal
+        visible={listModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setListModal({ visible: false, type: 'following' })}
+      >
+        <TouchableWithoutFeedback onPress={() => setListModal({ visible: false, type: 'following' })}>
+          <View style={styles.previewOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.previewContent, { backgroundColor: '#fff', padding: 16, borderRadius: 16 }]}>
+                <Text style={[styles.panelTitle, { color: theme.text }]}>
+                  {listModal.type === 'followers' ? 'Followers' : 'Following'}
+                </Text>
+                <ScrollView contentContainerStyle={{ gap: 8 }}>
+                  {(listModal.type === 'followers' ? followersList : followingList).length === 0 ? (
+                    <Text style={styles.muted}>No users yet.</Text>
+                  ) : (
+                    (listModal.type === 'followers' ? followersList : followingList).map((h) => (
+                      <Text key={`lst-${h}`} style={styles.followListItem}>
+                        {h}
+                      </Text>
+                    ))
+                  )}
+                </ScrollView>
+                <TouchableOpacity
+                  style={styles.previewClose}
+                  onPress={() => setListModal({ visible: false, type: 'following' })}
+                >
+                  <Text style={styles.previewCloseText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
       <View style={styles.bottomButtons}>
         <TouchableOpacity
           style={[styles.authButton, styles.authButtonOutline, styles.bottomButtonHalf]}
@@ -493,8 +566,6 @@ const FeedScreen = ({ onReady }) => {
   const [profilePreview, setProfilePreview] = useState({ visible: false, handle: null });
   const [previewUploads, setPreviewUploads] = useState([]);
   const [previewFollowing, setPreviewFollowing] = useState(false);
-  const [previewFollowingList, setPreviewFollowingList] = useState([]);
-  const [previewFollowersList, setPreviewFollowersList] = useState([]);
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
     if (viewableItems?.length) {
@@ -766,22 +837,6 @@ const FeedScreen = ({ onReady }) => {
       setProfilePreview({ visible: true, handle });
       loadProfilePreview(handle);
       checkPreviewFollowing(handle);
-      (async () => {
-        if (!db || !handle) return;
-        try {
-          const targetDoc = await getDoc(doc(db, 'follows', handle));
-          setPreviewFollowingList(targetDoc.exists() ? targetDoc.data()?.following || [] : []);
-          const snaps = await getDocs(collection(db, 'follows'));
-          const followers = [];
-          snaps.forEach((d) => {
-            const arr = d.data()?.following || [];
-            if (arr.includes(handle)) followers.push(d.id);
-          });
-          setPreviewFollowersList(followers);
-        } catch (err) {
-          console.warn('Load follow lists failed', err);
-        }
-      })();
     },
     [checkPreviewFollowing, loadProfilePreview]
   );
@@ -1188,26 +1243,6 @@ const FeedScreen = ({ onReady }) => {
                     <Text style={styles.followButtonText}>{previewFollowing ? 'Unfollow' : 'Follow'}</Text>
                   </TouchableOpacity>
                 ) : null}
-                <View style={styles.followListContainer}>
-                  <View style={styles.followListRow}>
-                    <Text style={styles.followListLabel}>Following</Text>
-                    <Text style={styles.followListCount}>{previewFollowingList.length}</Text>
-                  </View>
-                  {previewFollowingList.slice(0, 6).map((h) => (
-                    <Text key={`pfing-${h}`} style={styles.followListItem}>
-                      {h}
-                    </Text>
-                  ))}
-                  <View style={[styles.followListRow, { marginTop: 10 }]}>
-                    <Text style={styles.followListLabel}>Followers</Text>
-                    <Text style={styles.followListCount}>{previewFollowersList.length}</Text>
-                  </View>
-                  {previewFollowersList.slice(0, 6).map((h) => (
-                    <Text key={`pfers-${h}`} style={styles.followListItem}>
-                      {h}
-                    </Text>
-                  ))}
-                </View>
                 <ScrollView contentContainerStyle={{ gap: 10 }}>
                   {previewUploads.length === 0 ? (
                     <Text style={styles.muted}>No uploads yet.</Text>
@@ -2775,6 +2810,9 @@ const styles = StyleSheet.create({
   followListItem: {
     color: theme.muted,
     fontSize: 12,
+  },
+  followStatButton: {
+    padding: 8,
   },
   kickoffText: {
     color: '#ffffff',
