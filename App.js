@@ -493,6 +493,8 @@ const FeedScreen = ({ onReady }) => {
   const [profilePreview, setProfilePreview] = useState({ visible: false, handle: null });
   const [previewUploads, setPreviewUploads] = useState([]);
   const [previewFollowing, setPreviewFollowing] = useState(false);
+  const [previewFollowingList, setPreviewFollowingList] = useState([]);
+  const [previewFollowersList, setPreviewFollowersList] = useState([]);
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
     if (viewableItems?.length) {
@@ -764,6 +766,22 @@ const FeedScreen = ({ onReady }) => {
       setProfilePreview({ visible: true, handle });
       loadProfilePreview(handle);
       checkPreviewFollowing(handle);
+      (async () => {
+        if (!db || !handle) return;
+        try {
+          const targetDoc = await getDoc(doc(db, 'follows', handle));
+          setPreviewFollowingList(targetDoc.exists() ? targetDoc.data()?.following || [] : []);
+          const snaps = await getDocs(collection(db, 'follows'));
+          const followers = [];
+          snaps.forEach((d) => {
+            const arr = d.data()?.following || [];
+            if (arr.includes(handle)) followers.push(d.id);
+          });
+          setPreviewFollowersList(followers);
+        } catch (err) {
+          console.warn('Load follow lists failed', err);
+        }
+      })();
     },
     [checkPreviewFollowing, loadProfilePreview]
   );
@@ -1170,6 +1188,26 @@ const FeedScreen = ({ onReady }) => {
                     <Text style={styles.followButtonText}>{previewFollowing ? 'Unfollow' : 'Follow'}</Text>
                   </TouchableOpacity>
                 ) : null}
+                <View style={styles.followListContainer}>
+                  <View style={styles.followListRow}>
+                    <Text style={styles.followListLabel}>Following</Text>
+                    <Text style={styles.followListCount}>{previewFollowingList.length}</Text>
+                  </View>
+                  {previewFollowingList.slice(0, 6).map((h) => (
+                    <Text key={`pfing-${h}`} style={styles.followListItem}>
+                      {h}
+                    </Text>
+                  ))}
+                  <View style={[styles.followListRow, { marginTop: 10 }]}>
+                    <Text style={styles.followListLabel}>Followers</Text>
+                    <Text style={styles.followListCount}>{previewFollowersList.length}</Text>
+                  </View>
+                  {previewFollowersList.slice(0, 6).map((h) => (
+                    <Text key={`pfers-${h}`} style={styles.followListItem}>
+                      {h}
+                    </Text>
+                  ))}
+                </View>
                 <ScrollView contentContainerStyle={{ gap: 10 }}>
                   {previewUploads.length === 0 ? (
                     <Text style={styles.muted}>No uploads yet.</Text>
@@ -1545,6 +1583,26 @@ const ForumScreen = () => {
                       <Text style={styles.followButtonText}>{previewFollowing ? 'Unfollow' : 'Follow'}</Text>
                     </TouchableOpacity>
                   ) : null}
+                  <View style={styles.followListContainer}>
+                    <View style={styles.followListRow}>
+                      <Text style={styles.followListLabel}>Following</Text>
+                      <Text style={styles.followListCount}>{previewFollowingList.length}</Text>
+                    </View>
+                    {previewFollowingList.slice(0, 6).map((h) => (
+                      <Text key={`fv-fing-${h}`} style={styles.followListItem}>
+                        {h}
+                      </Text>
+                    ))}
+                    <View style={[styles.followListRow, { marginTop: 10 }]}>
+                      <Text style={styles.followListLabel}>Followers</Text>
+                      <Text style={styles.followListCount}>{previewFollowersList.length}</Text>
+                    </View>
+                    {previewFollowersList.slice(0, 6).map((h) => (
+                      <Text key={`fv-ffer-${h}`} style={styles.followListItem}>
+                        {h}
+                      </Text>
+                    ))}
+                  </View>
                   <ScrollView contentContainerStyle={{ gap: 10 }}>
                     {previewUploads.length === 0 ? (
                       <Text style={styles.muted}>No uploads yet.</Text>
@@ -2694,6 +2752,27 @@ const styles = StyleSheet.create({
     color: '#e5e7eb',
     fontSize: 12,
     fontWeight: '600',
+  },
+  followListContainer: {
+    marginTop: 8,
+    marginBottom: 8,
+    gap: 4,
+  },
+  followListRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  followListLabel: {
+    color: theme.text,
+    fontWeight: '700',
+  },
+  followListCount: {
+    color: theme.text,
+    fontWeight: '700',
+  },
+  followListItem: {
+    color: theme.muted,
+    fontSize: 12,
   },
   kickoffText: {
     color: '#ffffff',
