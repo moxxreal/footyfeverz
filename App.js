@@ -1,5 +1,5 @@
 ﻿import 'react-native-gesture-handler';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   FlatList,
@@ -17,11 +17,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import * as VideoThumbnails from 'expo-video-thumbnails';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { Video } from 'expo-av';
-import { NavigationContainer, DefaultTheme, useFocusEffect } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -33,23 +37,36 @@ import {
   getFirestore,
   getDoc,
   onSnapshot,
+  getDocs,
   orderBy,
   query,
+  startAfter,
+  limit,
   serverTimestamp,
   setDoc,
   updateDoc,
   arrayUnion,
+  arrayRemove,
   doc,
   increment,
   where,
 } from 'firebase/firestore';
-import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
+import { getDownloadURL, getStorage, ref, uploadBytesResumable } from 'firebase/storage';
 
 const Tab = createBottomTabNavigator();
 const { height: screenHeight } = Dimensions.get('window');
 const tabBarHeight = 66;
 const cardHeight = Math.round(screenHeight - tabBarHeight);
-const currentUser = '@you'; // replace with real handle when auth is added
+const AuthContext = React.createContext({
+  user: '@guest',
+  login: () => {},
+  signup: () => {},
+  logout: () => {},
+  requireAuth: () => {},
+});
+const PAGE_SIZE = 10;
+const FEED_CACHE_PATH = `${FileSystem.documentDirectory || ''}feed-cache.json`;
+const CDN_HOST = ''; // set to your CDN domain (e.g., cdn.footyfeverz.com); leave '' to disable rewriting
 
 const theme = {
   background: '#f5f7fb',
@@ -106,6 +123,17 @@ const firebaseConfig = {
 let cachedApp;
 let cachedDb;
 let cachedStorage;
+
+const applyCdn = (url) => {
+  if (!CDN_HOST || !url) return url;
+  try {
+    const u = new URL(url);
+    u.host = CDN_HOST.replace(/^https?:\/\//, '');
+    return u.toString();
+  } catch {
+    return url;
+  }
+};
 
 const getAppInstance = () => {
   if (cachedApp) return cachedApp;
@@ -164,17 +192,22 @@ const fallbackUploads = [
   },
 ];
 
-const ProfileScreen = () => {
+const ProfileScreen = ({ route }) => {
+  const { user, login, signup, logout } = useContext(AuthContext);
   const [uploads, setUploads] = useState(fallbackUploads);
   const [avatarUri, setAvatarUri] = useState(null);
   const [bio, setBio] = useState('');
   const [showBioInput, setShowBioInput] = useState(false);
   const [preview, setPreview] = useState({ visible: false, item: null });
   const db = useMemo(() => getDb(), []);
+  const viewedHandle = route?.params?.userHandle || user;
+  const isGuest = !user || user === '@guest';
+  const isOwnProfile = !viewedHandle || viewedHandle === user;
+  const [isFollowing, setIsFollowing] = useState(false);
 
   useEffect(() => {
-    if (!db) return undefined;
-    const q = query(collection(db, 'feed'), where('uploader', '==', '@you'), orderBy('createdAt', 'desc'));
+    if (!db || !viewedHandle) return undefined;
+    const q = query(collection(db, 'feed'), where('uploader', '==', viewedHandle), orderBy('createdAt', 'desc'));
     return onSnapshot(
       q,
       (snapshot) => {
@@ -187,11 +220,53 @@ const ProfileScreen = () => {
             mediaType: data.mediaType || 'image',
           };
         });
-        if (list.length) setUploads(list);
+        setUploads(list);
       },
       (err) => console.warn('Profile uploads failed', err)
     );
-  }, [db]);
+  }, [db, viewedHandle]);
+
+  useEffect(() => {
+    if (!db || isGuest || !viewedHandle || isOwnProfile) {
+      setIsFollowing(false);
+      return;
+    }
+    const unsub = onSnapshot(
+      doc(db, 'follows', user),
+      (snap) => {
+        const data = snap.data();
+        const following = data?.following || [];
+        setIsFollowing(following.includes(viewedHandle));
+      },
+      (err) => console.warn('Follow state failed', err)
+    );
+    return () => unsub();
+  }, [db, isGuest, user, viewedHandle, isOwnProfile]);
+
+  const toggleFollow = useCallback(async () => {
+    if (isGuest) {
+      login();
+      return;
+    }
+    if (!db || !viewedHandle || isOwnProfile) return;
+    try {
+      if (isFollowing) {
+        await setDoc(
+          doc(db, 'follows', user),
+          { following: arrayRemove(viewedHandle) },
+          { merge: true }
+        );
+      } else {
+        await setDoc(
+          doc(db, 'follows', user),
+          { following: arrayUnion(viewedHandle) },
+          { merge: true }
+        );
+      }
+    } catch (err) {
+      console.warn('Toggle follow failed', err);
+    }
+  }, [db, isFollowing, isGuest, isOwnProfile, user, viewedHandle, login]);
 
   const handlePickAvatar = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -208,9 +283,28 @@ const ProfileScreen = () => {
     if (uri) setAvatarUri(uri);
   };
 
+  if (isGuest) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <View style={[styles.heroCard, { alignItems: 'center' }]}>
+          <Text style={styles.title}>Welcome to FootyFeverz</Text>
+          <Text style={styles.muted}>Log in or sign up to view your profile and uploads.</Text>
+          <View style={styles.authRow}>
+            <TouchableOpacity style={styles.authButton} onPress={signup}>
+              <Text style={styles.authButtonText}>Sign up</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.authButton, styles.authButtonOutline]} onPress={login}>
+              <Text style={[styles.authButtonText, { color: theme.secondary }]}>Log in</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: 140 }]}>
         <View style={styles.heroCard}>
           <View style={styles.avatarRow}>
             <View style={styles.avatarWrapper}>
@@ -226,7 +320,14 @@ const ProfileScreen = () => {
               </TouchableOpacity>
             </View>
           </View>
-          <Text style={styles.title}>Footy Fever</Text>
+          <Text style={styles.title}>{viewedHandle || 'Your profile'}</Text>
+          {!isOwnProfile ? (
+            <View style={styles.followRow}>
+              <TouchableOpacity style={styles.followButton} onPress={toggleFollow}>
+                <Text style={styles.followButtonText}>{isFollowing ? 'Unfollow' : 'Follow'}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
           <TouchableOpacity style={styles.addBioButton} onPress={() => setShowBioInput((s) => !s)}>
             <Text style={styles.addBioText}>{bio ? 'Edit bio' : 'Add bio'}</Text>
           </TouchableOpacity>
@@ -311,6 +412,29 @@ const ProfileScreen = () => {
           </TouchableWithoutFeedback>
         </Modal>
       </ScrollView>
+      <View style={styles.bottomButtons}>
+        <TouchableOpacity
+          style={[styles.authButton, styles.authButtonOutline, styles.bottomButtonHalf]}
+          onPress={logout}
+        >
+          <Text style={[styles.authButtonText, { color: theme.secondary }]}>Log out</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.authButton, styles.deleteButton, styles.bottomButtonHalf]}
+          onPress={() =>
+            Alert.alert('Delete account', 'Type DELETE to confirm', [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: () => logout(),
+              },
+            ])
+          }
+        >
+          <Text style={[styles.authButtonText, styles.deleteButtonText]}>Delete account</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 };
@@ -340,15 +464,33 @@ const GamesScreen = () => (
 );
 
 const FeedScreen = ({ onReady }) => {
+  const { user, requireAuth } = useContext(AuthContext);
   const [feed, setFeed] = useState([]);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [liked, setLiked] = useState({});
   const [commentModal, setCommentModal] = useState({ visible: false, item: null, text: '' });
+  const [commentLoading, setCommentLoading] = useState(false);
+  const [loadingPage, setLoadingPage] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [playbackProgress, setPlaybackProgress] = useState({});
   const db = useMemo(() => getDb(), []);
   const storage = useMemo(() => getStorageInstance(), []);
   const videoRefs = useRef({});
   const [activeId, setActiveId] = useState(null);
   const [isFocused, setIsFocused] = useState(true);
+  const lastDocRef = useRef(null);
+  const likeTimersRef = useRef({});
+  const lastSentLikeRef = useRef({});
+  const likedRef = useRef({});
+  const cacheLoadedRef = useRef(false);
+  const isGuest = !user || user === '@guest';
+  const navigation = useNavigation();
+  const [profilePreview, setProfilePreview] = useState({ visible: false, handle: null });
+  const [previewUploads, setPreviewUploads] = useState([]);
+  const [previewFollowing, setPreviewFollowing] = useState(false);
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
     if (viewableItems?.length) {
@@ -357,38 +499,105 @@ const FeedScreen = ({ onReady }) => {
     }
   }).current;
 
-  useEffect(() => {
-    if (!db) return undefined;
+  const mapFeedDoc = useCallback((docSnap) => {
+    const data = docSnap.data();
+    return {
+      id: docSnap.id,
+      title: data.title || 'Untitled clip',
+      club: data.club || '',
+      description: data.description || '',
+      mediaUrl: applyCdn(data.mediaUrl || data.thumbnail || data.imageUrl || ''),
+      thumbnail: applyCdn(data.thumbnail || data.imageUrl || data.mediaUrl || ''),
+      uploader: data.uploader || '@footyfan',
+      likes: data.likes || 0,
+      comments: data.comments || 0,
+      mediaType: data.mediaType || 'image',
+      commentsList: [],
+    };
+  }, []);
 
-    const q = query(collection(db, 'feed'), orderBy('createdAt', 'desc'));
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        const items = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            title: data.title || 'Untitled clip',
-            club: data.club || '',
-            description: data.description || '',
-            mediaUrl: data.mediaUrl || data.thumbnail || data.imageUrl || '',
-            thumbnail: data.thumbnail || data.imageUrl || '',
-            uploader: data.uploader || '@footyfan',
-            likes: data.likes || 0,
-            comments: data.comments || 0,
-            mediaType: data.mediaType || 'image',
-            commentsList: data.commentsList || [],
-          };
-        });
-        setFeed(items);
+  const dedupeById = useCallback((list) => {
+    const seen = new Set();
+    return list.filter((item) => {
+      const key = item?.id;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, []);
+
+  const fetchPage = useCallback(
+    async (reset = false) => {
+      if (!db) {
         if (!hasLoaded) {
           setHasLoaded(true);
           onReady?.();
         }
-      },
-      (error) => console.warn('Feed subscription failed', error)
-    );
-  }, [db, hasLoaded, onReady]);
+        return;
+      }
+      if (loadingPage) return;
+      if (!reset && !hasMore) return;
+
+      setLoadingPage(true);
+      try {
+        const baseQuery = query(collection(db, 'feed'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
+        const pagedQuery =
+          !reset && lastDocRef.current
+            ? query(collection(db, 'feed'), orderBy('createdAt', 'desc'), startAfter(lastDocRef.current), limit(PAGE_SIZE))
+            : baseQuery;
+        const snapshot = await getDocs(pagedQuery);
+        const items = snapshot.docs.map(mapFeedDoc);
+        lastDocRef.current = snapshot.docs[snapshot.docs.length - 1] || null;
+        setHasMore(snapshot.docs.length === PAGE_SIZE);
+        setFeed((prev) => {
+          const next = reset ? items : [...prev, ...items];
+          return dedupeById(next);
+        });
+        if (!hasLoaded) {
+          setHasLoaded(true);
+          onReady?.();
+        }
+      } catch (error) {
+        console.warn('Feed fetch failed', error);
+        if (!hasLoaded) {
+          setHasLoaded(true);
+          onReady?.();
+        }
+      } finally {
+        setLoadingPage(false);
+        if (reset) setRefreshing(false);
+      }
+    },
+    [db, hasLoaded, hasMore, loadingPage, mapFeedDoc, onReady, dedupeById]
+  );
+
+  useEffect(() => {
+    (async () => {
+      if (cacheLoadedRef.current || !FEED_CACHE_PATH) return;
+      cacheLoadedRef.current = true;
+      try {
+        const cached = await FileSystem.readAsStringAsync(FEED_CACHE_PATH);
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length) {
+          const deduped = dedupeById(parsed);
+          setFeed(deduped);
+          setActiveId(deduped[0]?.id || null);
+          setHasLoaded(true);
+        }
+      } catch (err) {
+        // ignore cache miss
+      } finally {
+        fetchPage(true);
+      }
+    })();
+  }, [dedupeById, fetchPage]);
+
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    lastDocRef.current = null;
+    setHasMore(true);
+    fetchPage(true);
+  }, [fetchPage]);
 
   useEffect(() => {
     if (!feed.length) return;
@@ -396,6 +605,40 @@ const FeedScreen = ({ onReady }) => {
       setActiveId(feed[0].id);
     }
   }, [feed, activeId]);
+
+  useEffect(() => {
+    likedRef.current = liked;
+  }, [liked]);
+
+  useEffect(() => {
+    if (!FEED_CACHE_PATH) return;
+    // write a lightweight cache (top 30 items)
+    const toCache = feed.slice(0, 30);
+    FileSystem.writeAsStringAsync(FEED_CACHE_PATH, JSON.stringify(toCache)).catch(() => {});
+  }, [feed]);
+
+  const loadCommentsForItem = useCallback(
+    async (item) => {
+      if (!db || !item) return;
+      setCommentLoading(true);
+      try {
+        const snap = await getDoc(doc(db, 'feed', item.id));
+        if (snap.exists()) {
+          const data = snap.data();
+          const commentsList = data.commentsList || [];
+          const comments = data.comments || commentsList.length;
+          setFeed((prev) =>
+            prev.map((it) => (it.id === item.id ? { ...it, commentsList, comments } : it))
+          );
+        }
+      } catch (err) {
+        console.warn('Load comments failed', err);
+      } finally {
+        setCommentLoading(false);
+      }
+    },
+    [db]
+  );
 
   useEffect(() => {
     if (!db && !hasLoaded) {
@@ -433,17 +676,21 @@ const FeedScreen = ({ onReady }) => {
   );
 
   const handleSubmitComment = useCallback(async () => {
+    if (!user || user === '@guest') {
+      requireAuth();
+      return;
+    }
     if (!commentModal.item || !commentModal.text.trim()) {
       setCommentModal({ visible: false, item: null, text: '' });
       return;
     }
-    const newComment = { author: currentUser || '@anon', text: commentModal.text.trim(), createdAt: Date.now() };
+    const newComment = { author: user || '@anon', text: commentModal.text.trim(), createdAt: Date.now() };
     setFeed((prev) =>
       prev.map((it) =>
         it.id === commentModal.item.id
           ? {
               ...it,
-              comments: (it.comments || 0) + 1,
+              comments: Math.max(0, (it.comments || 0) + 1),
               commentsList: [...(it.commentsList || []), newComment],
             }
           : it
@@ -460,31 +707,119 @@ const FeedScreen = ({ onReady }) => {
       }
     }
     setCommentModal({ visible: false, item: null, text: '' });
-  }, [commentModal, db]);
+  }, [commentModal, db, requireAuth, user]);
+
+  const activeComments = useMemo(() => {
+    if (!commentModal.item) return [];
+    const match = feed.find((it) => it.id === commentModal.item.id);
+    return match?.commentsList || [];
+  }, [feed, commentModal.item]);
+
+  const loadProfilePreview = useCallback(
+    (handle) => {
+      if (!db || !handle) return undefined;
+      const q = query(collection(db, 'feed'), where('uploader', '==', handle), orderBy('createdAt', 'desc'));
+      return onSnapshot(
+        q,
+        (snap) => {
+          const list = snap.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              title: data.title || 'Untitled',
+              mediaUrl: data.mediaUrl || data.thumbnail || '',
+              mediaType: data.mediaType || 'image',
+            };
+          });
+          setPreviewUploads(list);
+        },
+        (err) => console.warn('Preview load failed', err)
+      );
+    },
+    [db]
+  );
+
+  const checkPreviewFollowing = useCallback(
+    (handle) => {
+      if (!db || isGuest || !handle) {
+        setPreviewFollowing(false);
+        return () => {};
+      }
+      return onSnapshot(
+        doc(db, 'follows', user),
+        (snap) => {
+          const following = snap.data()?.following || [];
+          setPreviewFollowing(following.includes(handle));
+        },
+        (err) => console.warn('Preview follow check failed', err)
+      );
+    },
+    [db, isGuest, user]
+  );
+
+  const openProfilePreview = useCallback(
+    (handle) => {
+      setProfilePreview({ visible: true, handle });
+      loadProfilePreview(handle);
+      checkPreviewFollowing(handle);
+    },
+    [checkPreviewFollowing, loadProfilePreview]
+  );
+
+  const togglePreviewFollow = useCallback(async () => {
+    const handle = profilePreview.handle;
+    if (!handle) return;
+    if (isGuest) {
+      requireAuth();
+      return;
+    }
+    if (!db) return;
+    try {
+      if (previewFollowing) {
+        await setDoc(doc(db, 'follows', user), { following: arrayRemove(handle) }, { merge: true });
+      } else {
+        await setDoc(doc(db, 'follows', user), { following: arrayUnion(handle) }, { merge: true });
+      }
+    } catch (err) {
+      console.warn('Preview follow toggle failed', err);
+    }
+  }, [db, isGuest, previewFollowing, profilePreview.handle, requireAuth, user]);
 
   const handleToggleLike = useCallback(
-    async (item) => {
+    (item) => {
+      if (isGuest) {
+        requireAuth();
+        return;
+      }
       const wasLiked = !!liked[item.id];
-      const delta = wasLiked ? -1 : 1;
-      setLiked((prev) => ({ ...prev, [item.id]: !wasLiked }));
+      const nextLiked = !wasLiked;
+      const delta = nextLiked ? 1 : -1;
+      setLiked((prev) => ({ ...prev, [item.id]: nextLiked }));
       setFeed((prev) =>
         prev.map((it) =>
           it.id === item.id ? { ...it, likes: Math.max(0, (it.likes || 0) + delta) } : it
         )
       );
-      if (db) {
+
+      if (likeTimersRef.current[item.id]) clearTimeout(likeTimersRef.current[item.id]);
+      likeTimersRef.current[item.id] = setTimeout(async () => {
+        const finalLiked = likedRef.current[item.id];
+        const lastSent = lastSentLikeRef.current[item.id] || false;
+        if (finalLiked === lastSent || !db) return;
+        const sendDelta = finalLiked ? 1 : -1;
         try {
-          await updateDoc(doc(db, 'feed', item.id), { likes: increment(delta) });
+          await updateDoc(doc(db, 'feed', item.id), { likes: increment(sendDelta) });
+          lastSentLikeRef.current[item.id] = finalLiked;
         } catch (err) {
           console.warn('Persist like failed', err);
         }
-      }
+      }, 500);
     },
-    [db, liked]
+    [db, liked, isGuest, requireAuth]
   );
 
   const uploadToStorage = useCallback(
-    async (uri, isVideo) => {
+    async (uri, isVideo, onProgress) => {
       if (!storage) throw new Error('Storage not configured');
       const response = await fetch(uri);
       const blob = await response.blob();
@@ -494,19 +829,38 @@ const FeedScreen = ({ onReady }) => {
         `uploads/${Date.now()}-${Math.floor(Math.random() * 10000)}.${extGuess}`
       );
       const contentType = isVideo ? 'video/mp4' : 'image/jpeg';
-      await uploadBytes(storageRef, blob, { contentType });
-      return getDownloadURL(storageRef);
+      const uploadTask = uploadBytesResumable(storageRef, blob, { contentType });
+      const url = await new Promise((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snap) => {
+            if (onProgress && snap.totalBytes > 0) {
+              onProgress(snap.bytesTransferred / snap.totalBytes);
+            }
+          },
+          (err) => reject(err),
+          async () => {
+            try {
+              const rawUrl = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve(rawUrl);
+            } catch (err) {
+              reject(err);
+            }
+          }
+        );
+      });
+      return applyCdn(url);
     },
     [storage]
   );
 
   const handleAddClip = useCallback(async () => {
-    if (feed.length >= 30) {
-      Alert.alert('Upload limit reached', 'You can upload up to 30 clips.');
+    if (isGuest) {
+      requireAuth();
       return;
     }
-    if (!currentUser || currentUser === '@guest') {
-      Alert.alert('Sign in required', 'You need to be signed in to upload.');
+    if (feed.length >= 30) {
+      Alert.alert('Upload limit reached', 'You can upload up to 30 clips.');
       return;
     }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -517,44 +871,82 @@ const FeedScreen = ({ onReady }) => {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
-      quality: 0.8,
+      quality: 0.5,
       videoMaxDuration: 30,
+      allowsMultipleSelection: false,
     });
 
     if (result.canceled) return;
     const asset = result.assets?.[0];
     const uri = asset?.uri || '';
     const isVideo = asset?.type === 'video';
-    const thumb = uri;
+    let thumb = uri;
+    let uploadSource = uri;
 
-    let uploadedUrl = uri;
-    if (db && storage && uri) {
+    if (isVideo && uri) {
       try {
-        const cloudUrl = await uploadToStorage(uri, isVideo);
+        const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(uri, { time: 500 });
+        if (thumbUri) thumb = thumbUri;
+      } catch (err) {
+        console.warn('Video thumbnail failed', err);
+      }
+    } else if (uri) {
+      try {
+        const resized = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: 720 } }],
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        uploadSource = resized.uri;
+        thumb = resized.uri;
+      } catch (err) {
+        console.warn('Image resize failed', err);
+      }
+    }
+
+    let uploadedUrl = uploadSource;
+    let uploadedThumb = thumb;
+    if (db && storage && uploadSource) {
+      setUploading(true);
+      setUploadProgress(0);
+      try {
+        const cloudUrl = await uploadToStorage(uploadSource, isVideo, setUploadProgress);
         if (cloudUrl) uploadedUrl = cloudUrl;
+        if (thumb && thumb !== uploadSource) {
+          uploadedThumb = await uploadToStorage(thumb, false, setUploadProgress);
+        } else {
+          uploadedThumb = uploadedUrl;
+        }
       } catch (error) {
         console.warn('Upload failed, falling back locally', error?.message || error);
         Alert.alert(
           'Upload failed',
           'Could not upload to Firebase Storage. Check storage rules/bucket and try again.'
         );
+      } finally {
+        setUploading(false);
+        setUploadProgress(0);
       }
     }
 
     if (db) {
       try {
-        await addDoc(collection(db, 'feed'), {
+        const payload = {
           title: 'New footy clip',
           club: '',
           description: 'Describe your moment...',
           mediaUrl: uploadedUrl,
-          thumbnail: thumb,
-          uploader: currentUser,
+          thumbnail: uploadedThumb || uploadedUrl,
+          uploader: user,
           likes: 0,
           comments: 0,
           mediaType: isVideo ? 'video' : 'image',
           createdAt: serverTimestamp(),
-        });
+        };
+        const docRef = await addDoc(collection(db, 'feed'), payload);
+        setFeed((prev) =>
+          dedupeById([{ ...payload, id: docRef.id, commentsList: [], createdAt: Date.now() }, ...prev])
+        );
         return;
       } catch (error) {
         console.warn('Add clip failed, falling back locally', error?.message || error);
@@ -575,20 +967,25 @@ const FeedScreen = ({ onReady }) => {
         club: '',
         description: 'Describe your moment...',
         mediaUrl: uploadedUrl,
-        thumbnail: thumb,
-        uploader: currentUser,
+        thumbnail: uploadedThumb || uploadedUrl,
+        uploader: user,
         likes: 0,
         comments: 0,
         mediaType: isVideo ? 'video' : 'image',
       },
       ...prev,
-    ]);
-  }, [db, storage, uploadToStorage]);
+    ].reduce((acc, item) => {
+      if (!item?.id || acc.find((x) => x.id === item.id)) return acc;
+      acc.push(item);
+      return acc;
+    }, []));
+  }, [db, storage, uploadToStorage, feed.length, dedupeById, user, requireAuth, isGuest]);
 
   const renderItem = ({ item }) => {
     const isActive = item.id === activeId;
     const isLiked = liked[item.id];
     const likeCount = item.likes || 0;
+    const progress = playbackProgress[item.id] || 0;
     return (
       <View style={[styles.tiktokCard, { height: cardHeight }]}>
         {item.mediaType === 'video' && item.mediaUrl ? (
@@ -609,6 +1006,14 @@ const FeedScreen = ({ onReady }) => {
             useNativeControls={false}
             usePoster
             posterSource={item.thumbnail ? { uri: item.thumbnail } : undefined}
+            onPlaybackStatusUpdate={(status) => {
+              if (!status.isLoaded || !status.durationMillis) return;
+              const pct = Math.min(1, Math.max(0, status.positionMillis / status.durationMillis));
+              setPlaybackProgress((prev) => {
+                if (prev[item.id] === pct) return prev;
+                return { ...prev, [item.id]: pct };
+              });
+            }}
           />
         ) : item.mediaUrl ? (
           <Image source={{ uri: item.mediaUrl }} style={styles.tiktokImage} />
@@ -621,16 +1026,16 @@ const FeedScreen = ({ onReady }) => {
 
         <View style={styles.tiktokOverlay}>
           <View style={styles.feedBottom}>
-            <TouchableOpacity style={styles.uploaderRow}>
+            <TouchableOpacity
+              style={styles.uploaderRow}
+              onPress={() => openProfilePreview(item.uploader)}
+            >
               <View style={styles.uploaderAvatar}>
                 <Text style={styles.uploaderAvatarText}>
                   {item.uploader?.slice(1, 2)?.toUpperCase() || 'F'}
                 </Text>
               </View>
               <Text style={[styles.uploaderHandle, styles.overlayText]}>{item.uploader}</Text>
-              <View style={styles.followPill}>
-                <Text style={styles.followText}>Follow</Text>
-              </View>
             </TouchableOpacity>
             <Text style={[styles.cardTitle, styles.overlayText]}>{item.title}</Text>
             <Text style={[styles.cardDesc, styles.overlayMuted]}>{item.description}</Text>
@@ -646,20 +1051,31 @@ const FeedScreen = ({ onReady }) => {
           </View>
 
           <View style={styles.actionRail}>
-            <TouchableOpacity style={styles.actionStack} onPress={() => handleToggleLike(item)}>
-              <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={32} color="#ffffff" />
+            <TouchableOpacity style={styles.actionButtonSurface} onPress={() => handleToggleLike(item)}>
+              <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={28} color="#ffffff" />
               <Text style={styles.actionStackLabel}>{formatCount(likeCount)}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.actionStack}
-              onPress={() => setCommentModal({ visible: true, item, text: '' })}
+              style={styles.actionButtonSurface}
+              onPress={() => {
+                if (isGuest) {
+                  requireAuth();
+                  return;
+                }
+                setCommentModal({ visible: true, item, text: '' });
+                loadCommentsForItem(item);
+              }}
             >
-              <Ionicons name="chatbubble-ellipses" size={32} color="#ffffff" />
+              <Ionicons name="chatbubble-ellipses" size={28} color="#ffffff" />
               <Text style={styles.actionStackLabel}>{formatCount(item.comments)}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.actionStack}
+              style={styles.actionButtonSurface}
               onPress={async () => {
+                if (isGuest) {
+                  requireAuth();
+                  return;
+                }
                 try {
                   await Share.share({ message: `${item.title} - ${item.mediaUrl || ''}` });
                 } catch (err) {
@@ -667,17 +1083,15 @@ const FeedScreen = ({ onReady }) => {
                 }
               }}
             >
-              <Ionicons name="share-social" size={30} color="#ffffff" />
+              <Ionicons name="share-social" size={26} color="#ffffff" />
               <Text style={styles.actionStackLabel}>Share</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionStack}
-              onPress={() => Alert.alert('Saved', 'Download coming soon.')}
-            >
-              <Ionicons name="bookmark" size={30} color="#ffffff" />
-              <Text style={styles.actionStackLabel}>Save</Text>
-            </TouchableOpacity>
           </View>
+          {item.mediaType === 'video' && isActive ? (
+            <View style={styles.videoProgressBar}>
+              <View style={[styles.videoProgressFill, { width: `${progress * 100}%` }]} />
+            </View>
+          ) : null}
         </View>
       </View>
     );
@@ -695,9 +1109,9 @@ const FeedScreen = ({ onReady }) => {
         decelerationRate="fast"
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
-        initialNumToRender={4}
-        maxToRenderPerBatch={3}
-        windowSize={5}
+        initialNumToRender={2}
+        maxToRenderPerBatch={2}
+        windowSize={4}
         removeClippedSubviews
         bounces={false}
         overScrollMode="never"
@@ -705,17 +1119,79 @@ const FeedScreen = ({ onReady }) => {
         disableIntervalMomentum
         snapToStart
         snapToEnd
+        onEndReached={() => fetchPage(false)}
+        onEndReachedThreshold={0.6}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+        ListFooterComponent={() =>
+          loadingPage && hasMore ? (
+            <View style={{ paddingVertical: 20 }}>
+              <ActivityIndicator color={theme.secondary} />
+            </View>
+          ) : (
+            <View style={{ height: 8 }} />
+          )
+        }
         getItemLayout={(_, index) => ({
           length: cardHeight,
           offset: cardHeight * index,
           index,
         })}
-        contentContainerStyle={{ paddingBottom: tabBarHeight }}
+        contentContainerStyle={{ paddingBottom: tabBarHeight + 12 }}
       />
+      {uploading ? (
+        <View style={styles.uploadProgressContainer}>
+          <Text style={styles.uploadProgressLabel}>Uploading...</Text>
+          <View style={styles.uploadProgressBar}>
+            <View style={[styles.uploadProgressFill, { width: `${Math.round(uploadProgress * 100)}%` }]} />
+          </View>
+          <Text style={styles.uploadProgressPct}>{Math.round(uploadProgress * 100)}%</Text>
+        </View>
+      ) : null}
       <TouchableOpacity style={styles.fab} onPress={handleAddClip} activeOpacity={0.9}>
         <Ionicons name="add" size={28} color={theme.background} />
         <Text style={styles.fabText}>Add clip</Text>
       </TouchableOpacity>
+      <Modal
+        visible={profilePreview.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setProfilePreview({ visible: false, handle: null })}
+      >
+        <TouchableWithoutFeedback onPress={() => setProfilePreview({ visible: false, handle: null })}>
+          <View style={styles.previewOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.previewContent, { backgroundColor: '#fff', padding: 16, borderRadius: 16 }]}>
+                <Text style={[styles.panelTitle, { color: theme.text }]}>{profilePreview.handle}</Text>
+                {!isGuest && profilePreview.handle !== user ? (
+                  <TouchableOpacity style={styles.followButton} onPress={togglePreviewFollow}>
+                    <Text style={styles.followButtonText}>{previewFollowing ? 'Unfollow' : 'Follow'}</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <ScrollView contentContainerStyle={{ gap: 10 }}>
+                  {previewUploads.length === 0 ? (
+                    <Text style={styles.muted}>No uploads yet.</Text>
+                  ) : (
+                    previewUploads.map((it) => (
+                      <View key={it.id} style={styles.commentBubble}>
+                        <Text style={styles.commentAuthor}>{it.title}</Text>
+                        {it.mediaType === 'video' ? (
+                          <Video source={{ uri: it.mediaUrl }} style={{ width: '100%', height: 200 }} useNativeControls />
+                        ) : (
+                          <Image source={{ uri: it.mediaUrl }} style={{ width: '100%', height: 200, borderRadius: 10 }} />
+                        )}
+                      </View>
+                    ))
+                  )}
+                </ScrollView>
+                <TouchableOpacity style={styles.previewClose} onPress={() => setProfilePreview({ visible: false, handle: null })}>
+                  <Text style={styles.previewCloseText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
       <Modal visible={commentModal.visible} transparent animationType="slide">
         <TouchableWithoutFeedback
           onPress={() => {
@@ -731,12 +1207,16 @@ const FeedScreen = ({ onReady }) => {
               <View style={styles.modalCard}>
                 <Text style={styles.panelTitle}>Comments</Text>
                 <ScrollView style={styles.commentList} contentContainerStyle={{ gap: 8 }}>
-                  {(commentModal.item?.commentsList || []).length === 0 ? (
+                  {commentLoading ? (
+                    <ActivityIndicator color={theme.secondary} />
+                  ) : activeComments.length === 0 ? (
                     <Text style={styles.muted}>No comments yet.</Text>
                   ) : (
-                    commentModal.item.commentsList.map((c, idx) => (
+                    activeComments.map((c, idx) => (
                       <View key={idx} style={styles.commentBubble}>
-                        <Text style={styles.commentAuthor}>{c.author || 'Anon'}</Text>
+                        <Text style={styles.commentAuthor} onPress={() => openProfilePreview(c.author)}>
+                          {c.author || 'Anon'}
+                        </Text>
                         <Text style={styles.commentText}>{c.text || ''}</Text>
                       </View>
                     ))
@@ -774,6 +1254,7 @@ const FeedScreen = ({ onReady }) => {
 };
 
 const ForumScreen = () => {
+  const { user, requireAuth } = useContext(AuthContext);
   const [activeTeam, setActiveTeam] = useState(null);
   const [forumComments, setForumComments] = useState({});
   const [commentText, setCommentText] = useState('');
@@ -781,8 +1262,22 @@ const ForumScreen = () => {
   const [commentImage, setCommentImage] = useState(null);
   const db = useMemo(() => getDb(), []);
   const storage = useMemo(() => getStorageInstance(), []);
+  const navigation = useNavigation();
+  const [previewState, setPreviewState] = useState({ visible: false, handle: null });
+  const [previewUploads, setPreviewUploads] = useState([]);
+  const [previewFollowing, setPreviewFollowing] = useState(false);
 
   const commentsForTeam = activeTeam ? forumComments[activeTeam.name] || [] : [];
+
+  useEffect(() => {
+    if (!activeTeam) return;
+    // Nudge the scroll view right after mount so scrolling is available immediately
+    const timer = setTimeout(() => {
+      detailScrollRef.current?.scrollTo({ y: 1, animated: false });
+      detailScrollRef.current?.scrollTo({ y: 0, animated: false });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [activeTeam, commentsForTeam.length]);
 
   const uploadForumImage = useCallback(
     async (uri) => {
@@ -815,6 +1310,10 @@ const ForumScreen = () => {
   );
 
   const handleSendComment = useCallback(async () => {
+    if (!user || user === '@guest') {
+      requireAuth();
+      return;
+    }
     if (!activeTeam) return;
     const trimmed = commentText.trim();
     if (!trimmed && !commentImage) return;
@@ -829,7 +1328,7 @@ const ForumScreen = () => {
     }
 
     const newComment = {
-      author: currentUser || '@anon',
+      author: user || '@anon',
       text: trimmed,
       imageUrl,
       createdAt: Date.now(),
@@ -855,9 +1354,13 @@ const ForumScreen = () => {
         console.warn('Persist forum comment failed', err);
       }
     }
-  }, [activeTeam, commentText, commentImage, db, uploadForumImage]);
+  }, [activeTeam, commentText, commentImage, db, uploadForumImage, user, requireAuth]);
 
   const handleAttachImage = async () => {
+    if (!user || user === '@guest') {
+      requireAuth();
+      return;
+    }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Permission needed', 'Enable photo library access to attach an image.');
@@ -872,84 +1375,201 @@ const ForumScreen = () => {
     if (uri) setCommentImage(uri);
   };
 
+  const loadForumPreview = useCallback(
+    (handle) => {
+      if (!db || !handle) return undefined;
+      const q = query(collection(db, 'feed'), where('uploader', '==', handle), orderBy('createdAt', 'desc'));
+      return onSnapshot(
+        q,
+        (snap) => {
+          const list = snap.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              title: data.title || 'Untitled',
+              mediaUrl: data.mediaUrl || data.thumbnail || '',
+              mediaType: data.mediaType || 'image',
+            };
+          });
+          setPreviewUploads(list);
+        },
+        (err) => console.warn('Forum preview load failed', err)
+      );
+    },
+    [db]
+  );
+
+  const watchPreviewFollow = useCallback(
+    (handle) => {
+      if (!db || !handle || !user || user === '@guest') {
+        setPreviewFollowing(false);
+        return () => {};
+      }
+      return onSnapshot(
+        doc(db, 'follows', user),
+        (snap) => {
+          const following = snap.data()?.following || [];
+          setPreviewFollowing(following.includes(handle));
+        },
+        (err) => console.warn('Forum preview follow check failed', err)
+      );
+    },
+    [db, user]
+  );
+
+  const openProfilePreview = useCallback(
+    (handle) => {
+      setPreviewState({ visible: true, handle });
+      loadForumPreview(handle);
+      watchPreviewFollow(handle);
+    },
+    [loadForumPreview, watchPreviewFollow]
+  );
+
+  const togglePreviewFollow = useCallback(async () => {
+    const handle = previewState.handle;
+    if (!handle) return;
+    if (!user || user === '@guest') {
+      requireAuth();
+      return;
+    }
+    if (!db) return;
+    try {
+      if (previewFollowing) {
+        await setDoc(doc(db, 'follows', user), { following: arrayRemove(handle) }, { merge: true });
+      } else {
+        await setDoc(doc(db, 'follows', user), { following: arrayUnion(handle) }, { merge: true });
+      }
+    } catch (err) {
+      console.warn('Forum preview follow toggle failed', err);
+    }
+  }, [db, previewFollowing, previewState.handle, requireAuth, user]);
+
   if (activeTeam) {
     return (
       <SafeAreaView style={[styles.screen, { backgroundColor: '#ffffff' }]}>
         <KeyboardAvoidingView
           style={styles.forumDetailContainer}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight + 8 : 0}
         >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={{ flex: 1 }}>
-              <TouchableOpacity style={styles.forumBackButton} onPress={() => setActiveTeam(null)}>
-                <Ionicons name="arrow-back" size={22} color={theme.secondary} />
-                <Text style={styles.forumBackText}>Back</Text>
-              </TouchableOpacity>
-              <ScrollView
-                ref={detailScrollRef}
-                style={styles.forumDetailScroll}
-                contentContainerStyle={styles.forumDetailContent}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="on-drag"
-                showsVerticalScrollIndicator={false}
-                nestedScrollEnabled
-                scrollEnabled
-              >
-                <View style={styles.forumLogoContainerModal}>
-                  <Image source={activeTeam.logo} style={styles.forumLogoImageModal} resizeMode="contain" />
-                  <Text style={styles.forumTeamLabelModal}>{activeTeam.name}</Text>
-                </View>
+          <View style={{ flex: 1 }}>
+            <TouchableOpacity style={styles.forumBackButton} onPress={() => setActiveTeam(null)}>
+              <Ionicons name="arrow-back" size={22} color={theme.secondary} />
+              <Text style={styles.forumBackText}>Back</Text>
+            </TouchableOpacity>
+            <ScrollView
+              ref={detailScrollRef}
+              style={styles.forumDetailScroll}
+              contentContainerStyle={styles.forumDetailContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+              overScrollMode="always"
+              scrollEventThrottle={16}
+              contentInsetAdjustmentBehavior="always"
+              onScrollBeginDrag={Keyboard.dismiss}
+            >
+              <View style={styles.forumLogoContainerModal}>
+                <Image source={activeTeam.logo} style={styles.forumLogoImageModal} resizeMode="contain" />
+                <Text style={styles.forumTeamLabelModal}>{activeTeam.name}</Text>
+              </View>
                 {commentsForTeam.length === 0 ? (
                   <Text style={styles.muted}>No posts yet. Start the discussion.</Text>
                 ) : (
                   commentsForTeam.map((c, idx) => (
                     <View key={`${activeTeam.name}-${idx}`} style={styles.commentBubble}>
-                      <Text style={styles.commentAuthor}>{c.author || '@anon'}</Text>
+                      <Text
+                        style={styles.commentAuthor}
+                        onPress={() => openProfilePreview(c.author)}
+                      >
+                        {c.author || '@anon'}
+                      </Text>
                       {c.text ? <Text style={styles.commentText}>{c.text}</Text> : null}
                       {c.imageUrl ? <Image source={{ uri: c.imageUrl }} style={styles.commentImage} /> : null}
                     </View>
                   ))
                 )}
-              </ScrollView>
-              <View style={styles.commentFormFixed}>
-                <TextInput
-                  style={styles.commentInput}
-                  value={commentText}
-                  onChangeText={setCommentText}
-                  placeholder="Add a post..."
-                  placeholderTextColor={theme.muted}
-                  multiline
-                  returnKeyType="default"
-                  onSubmitEditing={handleSendComment}
-                  onFocus={() => {
-                    setTimeout(() => detailScrollRef.current?.scrollToEnd({ animated: true }), 50);
-                  }}
-                />
-                {commentImage ? (
-                  <View style={styles.attachPreview}>
-                    <Image source={{ uri: commentImage }} style={styles.attachPreviewImage} />
-                    <TouchableOpacity onPress={() => setCommentImage(null)}>
-                      <Text style={styles.commentAttachText}>Remove</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-                <View style={styles.commentActionsRow}>
-                  <TouchableOpacity
-                    style={styles.commentAttachButton}
-                    onPress={handleAttachImage}
-                  >
-                    <Ionicons name="image-outline" size={18} color="#2563eb" />
-                    <Text style={styles.commentAttachText}>Add image</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.commentSendButton} onPress={handleSendComment}>
-                    <Text style={styles.commentSendText}>Post</Text>
+            </ScrollView>
+            <View style={styles.commentFormFixed}>
+              <TextInput
+                style={styles.commentInput}
+                value={commentText}
+                onChangeText={setCommentText}
+                placeholder="Add a post..."
+                placeholderTextColor={theme.muted}
+                multiline
+                returnKeyType="default"
+                onSubmitEditing={handleSendComment}
+                onFocus={() => {
+                  setTimeout(() => detailScrollRef.current?.scrollToEnd({ animated: true }), 50);
+                }}
+                onBlur={Keyboard.dismiss}
+              />
+              {commentImage ? (
+                <View style={styles.attachPreview}>
+                  <Image source={{ uri: commentImage }} style={styles.attachPreviewImage} />
+                  <TouchableOpacity onPress={() => setCommentImage(null)}>
+                    <Text style={styles.commentAttachText}>Remove</Text>
                   </TouchableOpacity>
                 </View>
+              ) : null}
+              <View style={styles.commentActionsRow}>
+                <TouchableOpacity style={styles.commentAttachButton} onPress={handleAttachImage}>
+                  <Ionicons name="image-outline" size={18} color="#2563eb" />
+                  <Text style={styles.commentAttachText}>Add image</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.commentSendButton} onPress={handleSendComment}>
+                  <Text style={styles.commentSendText}>Post</Text>
+                </TouchableOpacity>
               </View>
             </View>
-          </TouchableWithoutFeedback>
+          </View>
         </KeyboardAvoidingView>
+        <Modal
+          visible={previewState.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPreviewState({ visible: false, handle: null })}
+        >
+          <TouchableWithoutFeedback onPress={() => setPreviewState({ visible: false, handle: null })}>
+            <View style={styles.previewOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={[styles.previewContent, { backgroundColor: '#fff', padding: 16, borderRadius: 16 }]}>
+                  <Text style={[styles.panelTitle, { color: theme.text }]}>{previewState.handle}</Text>
+                  {previewState.handle && previewState.handle !== user ? (
+                    <TouchableOpacity style={styles.followButton} onPress={togglePreviewFollow}>
+                      <Text style={styles.followButtonText}>{previewFollowing ? 'Unfollow' : 'Follow'}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <ScrollView contentContainerStyle={{ gap: 10 }}>
+                    {previewUploads.length === 0 ? (
+                      <Text style={styles.muted}>No uploads yet.</Text>
+                    ) : (
+                      previewUploads.map((it) => (
+                        <View key={it.id} style={styles.commentBubble}>
+                          <Text style={styles.commentAuthor}>{it.title}</Text>
+                          {it.mediaType === 'video' ? (
+                            <Video source={{ uri: it.mediaUrl }} style={{ width: '100%', height: 200 }} useNativeControls />
+                          ) : (
+                            <Image source={{ uri: it.mediaUrl }} style={{ width: '100%', height: 200, borderRadius: 10 }} />
+                          )}
+                        </View>
+                      ))
+                    )}
+                  </ScrollView>
+                  <TouchableOpacity
+                    style={styles.previewClose}
+                    onPress={() => setPreviewState({ visible: false, handle: null })}
+                  >
+                    <Text style={styles.previewCloseText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -1004,33 +1624,217 @@ const formatCount = (count) => {
   return String(count);
 };
 
+const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState('@guest');
+  const [authVisible, setAuthVisible] = useState(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authConfirm, setAuthConfirm] = useState('');
+  const [storedAccount, setStoredAccount] = useState(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const db = useMemo(() => getDb(), []);
+
+  const resetAuthFields = useCallback(() => {
+    setAuthEmail('');
+    setAuthPassword('');
+    setAuthConfirm('');
+  }, []);
+
+  const completeAuth = useCallback(async () => {
+    if (authLoading) return;
+    if (!authEmail.trim()) {
+      Alert.alert('Email required', 'Please enter your email.');
+      return;
+    }
+    if (!authPassword.trim() || authPassword.trim().length < 6) {
+      Alert.alert('Password too short', 'Password must be at least 6 characters.');
+      return;
+    }
+    if (authMode === 'signup' && authPassword.trim() !== authConfirm.trim()) {
+      Alert.alert('Passwords do not match', 'Please re-enter matching passwords.');
+      return;
+    }
+
+    const emailNorm = authEmail.trim().toLowerCase();
+    const handle = `@${emailNorm.split('@')[0] || 'fan'}`;
+
+    setAuthLoading(true);
+
+    if (authMode === 'signup') {
+      try {
+        if (db) {
+          const existing = await getDoc(doc(db, 'users', emailNorm));
+          if (existing.exists()) {
+            Alert.alert('Email in use', 'This email is already registered. Please log in instead.');
+            setAuthLoading(false);
+            return;
+          }
+        }
+        if (db) {
+          await setDoc(
+            doc(db, 'users', emailNorm),
+            {
+              email: emailNorm,
+              password: authPassword.trim(),
+              handle,
+              createdAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+        setStoredAccount({ email: emailNorm, password: authPassword.trim(), handle });
+        setUser(handle);
+        setAuthVisible(false);
+        resetAuthFields();
+      } catch (err) {
+        console.warn('Signup save failed', err);
+        Alert.alert('Signup failed', 'Could not save user. Check connection and rules.');
+      } finally {
+        setAuthLoading(false);
+      }
+      return;
+    }
+
+    if (authMode === 'login') {
+      try {
+        if (db) {
+          const snap = await getDoc(doc(db, 'users', emailNorm));
+          if (snap.exists()) {
+            const data = snap.data();
+            if (data.password === authPassword.trim()) {
+              setUser(data.handle || handle);
+              setAuthVisible(false);
+              resetAuthFields();
+              setAuthLoading(false);
+              return;
+            }
+          }
+        }
+        // fallback to local
+        const matchesEmail = storedAccount?.email === emailNorm;
+        const matchesPass = storedAccount?.password === authPassword.trim();
+        if (matchesEmail && matchesPass) {
+          setUser(storedAccount.handle || handle);
+          setAuthVisible(false);
+          resetAuthFields();
+        } else {
+          Alert.alert('Login failed', 'Email or password is incorrect.');
+        }
+      } catch (err) {
+        console.warn('Login failed', err);
+        Alert.alert('Login failed', 'Check connection and try again.');
+      } finally {
+        setAuthLoading(false);
+      }
+    }
+  }, [authConfirm, authEmail, authMode, authPassword, authLoading, db, resetAuthFields, storedAccount]);
+
+  const login = useCallback(() => {
+    setAuthMode('login');
+    setAuthVisible(true);
+  }, []);
+
+  const signup = useCallback(() => {
+    setAuthMode('signup');
+    setAuthVisible(true);
+  }, []);
+
+  const logout = useCallback(() => {
+    setUser('@guest');
+    resetAuthFields();
+  }, []);
+
+  const requireAuth = useCallback(() => {
+    setAuthMode('login');
+    setAuthVisible(true);
+  }, []);
+
+  return (
+    <AuthContext.Provider value={{ user, login, signup, logout, requireAuth }}>
+      {children}
+      <Modal visible={authVisible} transparent animationType="fade" onRequestClose={() => setAuthVisible(false)}>
+        <TouchableWithoutFeedback onPress={() => setAuthVisible(false)}>
+          <View style={styles.authModalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.authModalCard}>
+                <Text style={styles.panelTitle}>{authMode === 'signup' ? 'Sign up' : 'Log in'}</Text>
+                <Text style={styles.muted}>Enter your email and password.</Text>
+                <TextInput
+                  style={styles.authInput}
+                  value={authEmail}
+                  onChangeText={setAuthEmail}
+                  placeholder="email"
+                  placeholderTextColor={theme.muted}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+                <TextInput
+                  style={styles.authInput}
+                  value={authPassword}
+                  onChangeText={setAuthPassword}
+                  placeholder="password"
+                  placeholderTextColor={theme.muted}
+                  secureTextEntry
+                />
+                {authMode === 'signup' ? (
+                  <TextInput
+                    style={styles.authInput}
+                    value={authConfirm}
+                    onChangeText={setAuthConfirm}
+                    placeholder="confirm password"
+                    placeholderTextColor={theme.muted}
+                    secureTextEntry
+                  />
+                ) : null}
+                <View style={styles.authModalActions}>
+                  <TouchableOpacity disabled={authLoading} onPress={() => setAuthVisible(false)}>
+                    <Text style={styles.addBioText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.authButton} onPress={completeAuth} disabled={authLoading}>
+                    <Text style={styles.authButtonText}>
+                      {authLoading ? 'Please wait...' : authMode === 'signup' ? 'Sign up' : 'Log in'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+    </AuthContext.Provider>
+  );
+};
+
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <NavigationContainer theme={navTheme}>
-          <StatusBar style="light" />
-          <Tab.Navigator
-            initialRouteName="Feed"
-            screenOptions={({ route }) => ({
-              headerShown: false,
-              tabBarStyle: styles.tabBar,
-              tabBarActiveTintColor: theme.highlight,
-              tabBarInactiveTintColor: theme.muted,
-              tabBarIcon: ({ color, size }) => {
-                if (route.name === 'Profile') return <Ionicons name="person" size={size} color={color} />;
-                if (route.name === 'Games') return <MaterialCommunityIcons name="soccer" size={size} color={color} />;
-                if (route.name === 'Feed') return <Ionicons name="play-circle" size={size} color={color} />;
-                return <FontAwesome5 name="users" size={size - 2} color={color} />;
-              },
-            })}
-          >
-            <Tab.Screen name="Profile" component={ProfileScreen} />
-            <Tab.Screen name="Forum" component={ForumScreen} />
-            <Tab.Screen name="Feed" component={FeedScreen} />
-            <Tab.Screen name="Games" component={GamesScreen} />
-          </Tab.Navigator>
-        </NavigationContainer>
+        <AuthProvider>
+          <NavigationContainer theme={navTheme}>
+            <StatusBar style="light" />
+            <Tab.Navigator
+              initialRouteName="Feed"
+              screenOptions={({ route }) => ({
+                headerShown: false,
+                tabBarStyle: styles.tabBar,
+                tabBarActiveTintColor: theme.highlight,
+                tabBarInactiveTintColor: theme.muted,
+                tabBarIcon: ({ color, size }) => {
+                  if (route.name === 'Profile') return <Ionicons name="person" size={size} color={color} />;
+                  if (route.name === 'Games') return <MaterialCommunityIcons name="soccer" size={size} color={color} />;
+                  if (route.name === 'Feed') return <Ionicons name="play-circle" size={size} color={color} />;
+                  return <FontAwesome5 name="users" size={size - 2} color={color} />;
+                },
+              })}
+            >
+              <Tab.Screen name="Profile" component={ProfileScreen} />
+              <Tab.Screen name="Forum" component={ForumScreen} />
+              <Tab.Screen name="Feed" component={FeedScreen} />
+              <Tab.Screen name="Games" component={GamesScreen} />
+            </Tab.Navigator>
+          </NavigationContainer>
+        </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
@@ -1178,6 +1982,79 @@ const styles = StyleSheet.create({
     color: theme.secondary,
     fontWeight: '700',
   },
+  authRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  authButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: theme.highlight,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.highlight,
+  },
+  authButtonOutline: {
+    backgroundColor: '#ffffff',
+    borderColor: '#e5e7eb',
+  },
+  authButtonText: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  deleteButton: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecdd3',
+  },
+  deleteButtonText: {
+    color: '#b91c1c',
+    fontWeight: '800',
+  },
+  bottomButtons: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 16,
+    flexDirection: 'row',
+    gap: 12,
+  },
+  bottomButtonHalf: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  authSubtle: {
+    color: theme.muted,
+    fontSize: 12,
+  },
+  authModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  authModalCard: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    gap: 10,
+  },
+  authInput: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    padding: 10,
+    color: theme.text,
+  },
+  authModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   statRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1324,10 +2201,17 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   commentFormFixed: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 4,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 10,
     gap: 8,
     backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
   },
   commentActionsRow: {
     flexDirection: 'row',
@@ -1435,8 +2319,9 @@ const styles = StyleSheet.create({
   },
   forumDetailContent: {
     gap: 12,
-    paddingBottom: 220,
+    paddingBottom: 240,
     flexGrow: 1,
+    minHeight: '100%',
   },
   sectionTitle: {
     color: theme.text,
@@ -1622,6 +2507,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 12,
   },
+  followRow: {
+    marginTop: 8,
+  },
+  followButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: theme.secondary,
+  },
+  followButtonText: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
   clubTagRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1646,13 +2544,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   actionRail: {
-    width: 70,
+    width: 80,
     alignItems: 'center',
-    gap: 14,
+    gap: 12,
     marginBottom: tabBarHeight + 6,
   },
-  actionStack: {
+  actionButtonSurface: {
+    width: 64,
+    height: 64,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.25)',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
   actionStackLabel: {
     color: '#ffffff',
@@ -1686,6 +2592,54 @@ const styles = StyleSheet.create({
   },
   overlayMuted: {
     color: '#e5e7eb',
+  },
+  videoProgressBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 8,
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  videoProgressFill: {
+    height: '100%',
+    backgroundColor: '#16a34a',
+  },
+  uploadProgressContainer: {
+    position: 'absolute',
+    bottom: tabBarHeight + 80,
+    left: 16,
+    right: 16,
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    borderRadius: 14,
+    padding: 12,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  uploadProgressLabel: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  uploadProgressBar: {
+    height: 6,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  uploadProgressFill: {
+    height: '100%',
+    backgroundColor: '#16a34a',
+  },
+  uploadProgressPct: {
+    color: '#e5e7eb',
+    fontSize: 12,
+    fontWeight: '600',
   },
   kickoffText: {
     color: '#ffffff',
