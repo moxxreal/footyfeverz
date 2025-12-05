@@ -708,6 +708,17 @@ const FeedScreen = ({ onReady }) => {
   }, [feed, isFocused]);
 
   useEffect(() => {
+    if (!feed.length || !isFocused) return;
+    const firstId = feed[0].id;
+    const ref = videoRefs.current[firstId];
+    if (ref) {
+      ref.setStatusAsync?.({ shouldPlay: true, isMuted: false });
+      ref.playAsync?.();
+      setVideoPlayState((prev) => ({ ...prev, [firstId]: true }));
+    }
+  }, [feed, isFocused]);
+
+  useEffect(() => {
     // Auto-play the newly active video when focused
     if (!activeId || !isFocused) return;
     const ref = videoRefs.current[activeId];
@@ -1105,9 +1116,12 @@ const FeedScreen = ({ onReady }) => {
     const onTogglePlay = () => {
       const ref = videoRefs.current[item.id];
       if (!ref) return;
-      const next = videoPlayState[item.id] === false ? true : false;
-      setVideoPlayState((prev) => ({ ...prev, [item.id]: next ? true : false }));
-      ref.setStatusAsync?.({ shouldPlay: next, isMuted: false });
+      ref.getStatusAsync?.().then((status) => {
+        const currentlyPlaying = status?.isPlaying || status?.shouldPlay;
+        const next = !currentlyPlaying;
+        ref.setStatusAsync?.({ shouldPlay: next, isMuted: false });
+        setVideoPlayState((prev) => ({ ...prev, [item.id]: next }));
+      });
     };
 
     return (
