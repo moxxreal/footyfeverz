@@ -205,6 +205,7 @@ const ProfileScreen = ({ route }) => {
   const viewedHandle = route?.params?.userHandle || user;
   const isGuest = !user || user === '@guest';
   const isOwnProfile = !viewedHandle || viewedHandle === user;
+  const profileCacheRef = useRef({});
   const [isFollowing, setIsFollowing] = useState(false);
   const [followingList, setFollowingList] = useState([]);
   const [followersList, setFollowersList] = useState([]);
@@ -250,6 +251,21 @@ const ProfileScreen = ({ route }) => {
       }
     })();
   }, [db, viewedHandle]);
+
+  useEffect(() => {
+    // Reset settings dropdown when switching profiles
+    setSettingsVisible(false);
+    // Load cached profile data per handle (session-only)
+    const cached = profileCacheRef.current[viewedHandle || ''] || {};
+    setAvatarUri(cached.avatarUri || null);
+    setBio(cached.bio || '');
+  }, [viewedHandle]);
+
+  useEffect(() => {
+    // Cache current profile data by handle
+    const key = viewedHandle || '';
+    profileCacheRef.current[key] = { avatarUri, bio };
+  }, [avatarUri, bio, viewedHandle]);
 
   useEffect(() => {
     if (!db || isGuest || !viewedHandle || isOwnProfile) {
@@ -2811,9 +2827,10 @@ const styles = StyleSheet.create({
   },
   profileHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
     paddingHorizontal: 16,
     marginTop: 4,
+    alignItems: 'center',
   },
   settingsButton: {
     padding: 8,
