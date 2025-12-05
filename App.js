@@ -1648,26 +1648,6 @@ const ForumScreen = () => {
                       <Text style={styles.followButtonText}>{previewFollowing ? 'Unfollow' : 'Follow'}</Text>
                     </TouchableOpacity>
                   ) : null}
-                  <View style={styles.followListContainer}>
-                    <View style={styles.followListRow}>
-                      <Text style={styles.followListLabel}>Following</Text>
-                      <Text style={styles.followListCount}>{previewFollowingList.length}</Text>
-                    </View>
-                    {previewFollowingList.slice(0, 6).map((h) => (
-                      <Text key={`fv-fing-${h}`} style={styles.followListItem}>
-                        {h}
-                      </Text>
-                    ))}
-                    <View style={[styles.followListRow, { marginTop: 10 }]}>
-                      <Text style={styles.followListLabel}>Followers</Text>
-                      <Text style={styles.followListCount}>{previewFollowersList.length}</Text>
-                    </View>
-                    {previewFollowersList.slice(0, 6).map((h) => (
-                      <Text key={`fv-ffer-${h}`} style={styles.followListItem}>
-                        {h}
-                      </Text>
-                    ))}
-                  </View>
                   <ScrollView contentContainerStyle={{ gap: 10 }}>
                     {previewUploads.length === 0 ? (
                       <Text style={styles.muted}>No uploads yet.</Text>
