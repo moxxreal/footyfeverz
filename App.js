@@ -544,25 +544,10 @@ const ProfileScreen = ({ route }) => {
 
 const GamesScreen = () => (
   <SafeAreaView style={styles.screen}>
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Upcoming Games</Text>
-        {fixtures.map((game) => (
-          <View key={game.id} style={styles.gameCard}>
-            <View>
-              <Text style={styles.gameTeams}>
-                {game.home} <Text style={{ color: theme.muted }}>vs</Text> {game.away}
-              </Text>
-              <Text style={styles.muted}>{game.venue}</Text>
-            </View>
-            <View style={styles.kickoffTag}>
-              <Ionicons name="time-outline" size={16} color="#ffffff" />
-              <Text style={styles.kickoffText}>{game.time}</Text>
-            </View>
-          </View>
-        ))}
-      </View>
-    </ScrollView>
+    <View style={[styles.panel, { flex: 1, justifyContent: 'center', alignItems: 'center' }]}>
+      <Text style={styles.panelTitle}>Games coming soon...</Text>
+      <Text style={styles.muted}>We’re adding live fixtures and scores shortly.</Text>
+    </View>
   </SafeAreaView>
 );
 
@@ -1999,7 +1984,7 @@ export default function App() {
                     tabBarInactiveTintColor: theme.muted,
                     tabBarIcon: ({ color, size }) => {
                       if (route.name === 'Profile') return <Ionicons name="person" size={size} color={color} />;
-                      if (route.name === 'Games') return <MaterialCommunityIcons name="soccer" size={size} color={color} />;
+                      if (route.name === 'Games') return <MaterialCommunityIcons name="controller-classic-outline" size={size} color={color} />;
                       if (route.name === 'Feed') return <Ionicons name="play-circle" size={size} color={color} />;
                       return <FontAwesome5 name="users" size={size - 2} color={color} />;
                     },
