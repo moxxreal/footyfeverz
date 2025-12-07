@@ -1,0 +1,24 @@
+name: Storage Cleanup
+
+on:
+  schedule:
+    - cron: "0 2 * * 0"
+  workflow_dispatch: {}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+      - run: npm ci --ignore-scripts
+      - name: Run storage cleanup
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
+        run: |
+          echo "$GOOGLE_APPLICATION_CREDENTIALS" > service-account.json
+          export GOOGLE_APPLICATION_CREDENTIALS="$PWD/service-account.json"
+          node tools/storageCleanup.js
