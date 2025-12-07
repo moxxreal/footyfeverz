@@ -67,6 +67,10 @@ const AuthContext = React.createContext({
   logout: () => {},
   requireAuth: () => {},
 });
+const TabVisibilityContext = React.createContext({
+  hideTabBar: false,
+  setHideTabBar: () => {},
+});
 const PAGE_SIZE = 10;
 const FEED_CACHE_PATH = `${FileSystem.documentDirectory || ''}feed-cache.json`;
 const CDN_HOST = ''; // set to your CDN domain (e.g., cdn.footyfeverz.com); leave '' to disable rewriting
@@ -553,6 +557,7 @@ const GamesScreen = () => (
 
 const FeedScreen = ({ onReady }) => {
   const { user, requireAuth } = useContext(AuthContext);
+  const { setHideTabBar } = useContext(TabVisibilityContext);
   const [feed, setFeed] = useState([]);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [liked, setLiked] = useState({});
@@ -733,6 +738,10 @@ const FeedScreen = ({ onReady }) => {
   useEffect(() => {
     likedRef.current = liked;
   }, [liked]);
+
+  useEffect(() => {
+    setHideTabBar(splashVisible);
+  }, [splashVisible, setHideTabBar]);
 
   useEffect(() => {
     if (!FEED_CACHE_PATH) return;
@@ -1968,6 +1977,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('Feed');
   const [dragX, setDragX] = useState(0);
   const animatedTransition = useRef(new Animated.Value(0)).current;
+  const [hideTabBar, setHideTabBar] = useState(false);
 
   const handleSwipe = useCallback(
     (dx, vx) => {
@@ -2007,41 +2017,43 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
-          <GestureDetector gesture={swipeGesture}>
-      <Animated.View style={{ flex: 1, transform: [{ translateX: Animated.add(animatedTransition, new Animated.Value(dragX * 0.08)) }] }}>
-        <NavigationContainer
-          ref={navigationRef}
-          theme={navTheme}
-          onReady={() => setActiveTab('Feed')}
-          onStateChange={() => {
-                  const route = navigationRef.getCurrentRoute();
-                  if (route?.name) setActiveTab(route.name);
-                }}
-              >
-                <StatusBar style="light" />
-                <Tab.Navigator
-                  initialRouteName="Feed"
-                  screenOptions={({ route }) => ({
-                    headerShown: false,
-                    tabBarStyle: styles.tabBar,
-                    tabBarActiveTintColor: theme.highlight,
-                    tabBarInactiveTintColor: theme.muted,
-                    tabBarIcon: ({ color, size }) => {
-                      if (route.name === 'Profile') return <Ionicons name="person" size={size} color={color} />;
-                      if (route.name === 'Games') return <MaterialCommunityIcons name="controller-classic-outline" size={size} color={color} />;
-                      if (route.name === 'Feed') return <Ionicons name="play-circle" size={size} color={color} />;
-                      return <FontAwesome5 name="users" size={size - 2} color={color} />;
-                    },
-                  })}
+          <TabVisibilityContext.Provider value={{ hideTabBar, setHideTabBar }}>
+            <GestureDetector gesture={swipeGesture}>
+              <Animated.View style={{ flex: 1, transform: [{ translateX: Animated.add(animatedTransition, new Animated.Value(dragX * 0.08)) }] }}>
+                <NavigationContainer
+                  ref={navigationRef}
+                  theme={navTheme}
+                  onReady={() => setActiveTab('Feed')}
+                  onStateChange={() => {
+                    const route = navigationRef.getCurrentRoute();
+                    if (route?.name) setActiveTab(route.name);
+                  }}
                 >
-                  <Tab.Screen name="Profile" component={ProfileScreen} />
-                  <Tab.Screen name="Forum" component={ForumScreen} />
-                  <Tab.Screen name="Feed" component={FeedScreen} />
-                  <Tab.Screen name="Games" component={GamesScreen} />
-                </Tab.Navigator>
-              </NavigationContainer>
-            </Animated.View>
-          </GestureDetector>
+                  <StatusBar style="light" />
+                  <Tab.Navigator
+                    initialRouteName="Feed"
+                    screenOptions={({ route }) => ({
+                      headerShown: false,
+                      tabBarStyle: hideTabBar ? { ...styles.tabBar, display: 'none' } : styles.tabBar,
+                      tabBarActiveTintColor: theme.highlight,
+                      tabBarInactiveTintColor: theme.muted,
+                      tabBarIcon: ({ color, size }) => {
+                        if (route.name === 'Profile') return <Ionicons name="person" size={size} color={color} />;
+                        if (route.name === 'Games') return <MaterialCommunityIcons name="controller-classic-outline" size={size} color={color} />;
+                        if (route.name === 'Feed') return <Ionicons name="play-circle" size={size} color={color} />;
+                        return <FontAwesome5 name="users" size={size - 2} color={color} />;
+                      },
+                    })}
+                  >
+                    <Tab.Screen name="Profile" component={ProfileScreen} />
+                    <Tab.Screen name="Forum" component={ForumScreen} />
+                    <Tab.Screen name="Feed" component={FeedScreen} />
+                    <Tab.Screen name="Games" component={GamesScreen} />
+                  </Tab.Navigator>
+                </NavigationContainer>
+              </Animated.View>
+            </GestureDetector>
+          </TabVisibilityContext.Provider>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
