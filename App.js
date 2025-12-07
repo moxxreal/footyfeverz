@@ -570,6 +570,7 @@ const FeedScreen = ({ onReady }) => {
   const [activeId, setActiveId] = useState(null);
   const [isFocused, setIsFocused] = useState(true);
   const [splashVisible, setSplashVisible] = useState(true);
+  const [firstReady, setFirstReady] = useState(false);
   const lastDocRef = useRef(null);
   const likeTimersRef = useRef({});
   const lastSentLikeRef = useRef({});
@@ -644,7 +645,6 @@ const FeedScreen = ({ onReady }) => {
         });
         if (!reset && !activeId && items.length) {
           setActiveId(items[0].id);
-          setSplashVisible(false);
         }
         if (!hasLoaded) {
           setHasLoaded(true);
@@ -696,9 +696,6 @@ const FeedScreen = ({ onReady }) => {
     if (!feed.length) return;
     if (!activeId || !feed.find((item) => item.id === activeId)) {
       setActiveId(feed[0].id);
-    }
-    if (feed.length && splashVisible) {
-      setSplashVisible(false);
     }
   }, [feed, activeId]);
 
@@ -1132,6 +1129,10 @@ const FeedScreen = ({ onReady }) => {
               usePoster
               posterSource={item.thumbnail ? { uri: item.thumbnail } : undefined}
               onPlaybackStatusUpdate={(status) => {
+                if (status?.isLoaded && isActive && !firstReady) {
+                  setFirstReady(true);
+                  setSplashVisible(false);
+                }
                 if (!status.isLoaded || !status.durationMillis) return;
                 const pct = Math.min(1, Math.max(0, status.positionMillis / status.durationMillis));
                 setPlaybackProgress((prev) => {
