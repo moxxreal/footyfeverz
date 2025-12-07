@@ -2008,12 +2008,12 @@ export default function App() {
       <SafeAreaProvider>
         <AuthProvider>
           <GestureDetector gesture={swipeGesture}>
-            <Animated.View style={{ flex: 1, transform: [{ translateX: Animated.add(animatedTransition, new Animated.Value(dragX * 0.08)) }] }}>
-              <NavigationContainer
-                ref={navigationRef}
-                theme={navTheme}
-                onReady={() => setActiveTab('Feed')}
-                onStateChange={() => {
+      <Animated.View style={{ flex: 1, transform: [{ translateX: Animated.add(animatedTransition, new Animated.Value(dragX * 0.08)) }] }}>
+        <NavigationContainer
+          ref={navigationRef}
+          theme={navTheme}
+          onReady={() => setActiveTab('Feed')}
+          onStateChange={() => {
                   const route = navigationRef.getCurrentRoute();
                   if (route?.name) setActiveTab(route.name);
                 }}
@@ -2023,7 +2023,7 @@ export default function App() {
                   initialRouteName="Feed"
                   screenOptions={({ route }) => ({
                     headerShown: false,
-                    tabBarStyle: splashVisible ? { ...styles.tabBar, display: 'none' } : styles.tabBar,
+                    tabBarStyle: styles.tabBar,
                     tabBarActiveTintColor: theme.highlight,
                     tabBarInactiveTintColor: theme.muted,
                     tabBarIcon: ({ color, size }) => {
@@ -2033,6 +2033,7 @@ export default function App() {
                       return <FontAwesome5 name="users" size={size - 2} color={color} />;
                     },
                   })}
+                  sceneContainerStyle={splashVisible ? { paddingBottom: -9999 } : undefined}
                 >
                   <Tab.Screen name="Profile" component={ProfileScreen} />
                   <Tab.Screen name="Forum" component={ForumScreen} />
@@ -2052,6 +2053,9 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: theme.background,
+  },
+  navContainer: {
+    flex: 1,
   },
   scroll: {
     padding: 16,
