@@ -712,18 +712,8 @@ const FeedScreen = ({ onReady }) => {
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.04,
-          duration: 900,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 0.96,
-          duration: 900,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
+        Animated.timing(pulseAnim, { toValue: 1.08, duration: 700, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0.92, duration: 700, easing: Easing.in(Easing.quad), useNativeDriver: true }),
       ])
     );
     loop.start();
