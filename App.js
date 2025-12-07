@@ -2033,7 +2033,6 @@ export default function App() {
                       return <FontAwesome5 name="users" size={size - 2} color={color} />;
                     },
                   })}
-                  sceneContainerStyle={splashVisible ? { paddingBottom: -9999 } : undefined}
                 >
                   <Tab.Screen name="Profile" component={ProfileScreen} />
                   <Tab.Screen name="Forum" component={ForumScreen} />
