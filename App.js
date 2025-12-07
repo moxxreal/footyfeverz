@@ -59,6 +59,7 @@ const Tab = createBottomTabNavigator();
 const { height: screenHeight } = Dimensions.get('window');
 const tabBarHeight = 66;
 const cardHeight = Math.round(screenHeight - tabBarHeight);
+const splashLogo = require('./assets/footyfeverz-logo.png');
 const AuthContext = React.createContext({
   user: '@guest',
   login: () => {},
@@ -568,6 +569,7 @@ const FeedScreen = ({ onReady }) => {
   const videoRefs = useRef({});
   const [activeId, setActiveId] = useState(null);
   const [isFocused, setIsFocused] = useState(true);
+  const [splashVisible, setSplashVisible] = useState(true);
   const lastDocRef = useRef(null);
   const likeTimersRef = useRef({});
   const lastSentLikeRef = useRef({});
@@ -642,6 +644,7 @@ const FeedScreen = ({ onReady }) => {
         });
         if (!reset && !activeId && items.length) {
           setActiveId(items[0].id);
+          setSplashVisible(false);
         }
         if (!hasLoaded) {
           setHasLoaded(true);
@@ -693,6 +696,9 @@ const FeedScreen = ({ onReady }) => {
     if (!feed.length) return;
     if (!activeId || !feed.find((item) => item.id === activeId)) {
       setActiveId(feed[0].id);
+    }
+    if (feed.length && splashVisible) {
+      setSplashVisible(false);
     }
   }, [feed, activeId]);
 
@@ -1219,6 +1225,11 @@ const FeedScreen = ({ onReady }) => {
 
   return (
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
+      {splashVisible ? (
+        <View style={styles.splashOverlay}>
+          <Image source={splashLogo} style={styles.splashLogo} resizeMode="contain" />
+        </View>
+      ) : null}
       <FlatList
         data={feed}
         keyExtractor={(item) => item.id}
@@ -2092,6 +2103,22 @@ const styles = StyleSheet.create({
     color: theme.muted,
     marginTop: 4,
     fontSize: 13,
+  },
+  splashOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  splashLogo: {
+    width: '70%',
+    height: '50%',
+    resizeMode: 'contain',
   },
   badges: {
     flexDirection: 'row',
