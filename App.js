@@ -572,6 +572,7 @@ const FeedScreen = ({ onReady }) => {
   const [splashVisible, setSplashVisible] = useState(true);
   const [firstReady, setFirstReady] = useState(false);
   const lastDocRef = useRef(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
   const likeTimersRef = useRef({});
   const lastSentLikeRef = useRef({});
   const likedRef = useRef({});
@@ -698,6 +699,21 @@ const FeedScreen = ({ onReady }) => {
       setActiveId(feed[0].id);
     }
   }, [feed, activeId]);
+
+  useEffect(() => {
+    if (!splashVisible) {
+      pulseAnim.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.08, duration: 700, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0.92, duration: 700, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [splashVisible, pulseAnim]);
 
   useEffect(() => {
     // Auto-play/pause based on active card focus
@@ -1228,7 +1244,7 @@ const FeedScreen = ({ onReady }) => {
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       {splashVisible ? (
         <View style={styles.splashOverlay}>
-          <Image source={splashLogo} style={styles.splashLogo} resizeMode="contain" />
+          <Animated.Image source={splashLogo} style={[styles.splashLogo, { transform: [{ scale: pulseAnim }] }]} resizeMode="contain" />
         </View>
       ) : null}
       <FlatList
