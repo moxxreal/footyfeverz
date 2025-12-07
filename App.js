@@ -1243,7 +1243,7 @@ const FeedScreen = ({ onReady }) => {
   return (
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       {splashVisible ? (
-        <View style={styles.splashOverlay}>
+        <View style={[styles.splashOverlay, { paddingBottom: tabBarHeight }]}>
           <Animated.Image source={splashLogo} style={[styles.splashLogo, { transform: [{ scale: pulseAnim }] }]} resizeMode="contain" />
         </View>
       ) : null}
@@ -2023,7 +2023,7 @@ export default function App() {
                   initialRouteName="Feed"
                   screenOptions={({ route }) => ({
                     headerShown: false,
-                    tabBarStyle: styles.tabBar,
+                    tabBarStyle: splashVisible ? { ...styles.tabBar, display: 'none' } : styles.tabBar,
                     tabBarActiveTintColor: theme.highlight,
                     tabBarInactiveTintColor: theme.muted,
                     tabBarIcon: ({ color, size }) => {
