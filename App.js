@@ -23,9 +23,10 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { Asset } from 'expo-asset';
 import { Video } from 'expo-av';
 import { NavigationContainer, DefaultTheme, useFocusEffect, useNavigation, useNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -52,8 +53,21 @@ import {
   doc,
   increment,
   where,
+  deleteDoc,
 } from 'firebase/firestore';
-import { getDownloadURL, getStorage, ref, uploadBytesResumable } from 'firebase/storage';
+import { getDownloadURL, getStorage, ref, uploadBytesResumable, uploadBytes, deleteObject } from 'firebase/storage';
+import {
+  getAuth,
+  initializeAuth,
+  getReactNativePersistence,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+  deleteUser,
+} from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Tab = createBottomTabNavigator();
 const { height: screenHeight } = Dimensions.get('window');
@@ -62,9 +76,12 @@ const cardHeight = Math.round(screenHeight - tabBarHeight);
 const splashLogo = require('./assets/footyfeverz-logo.png');
 const AuthContext = React.createContext({
   user: '@guest',
+  userEmail: '',
+  userUid: '',
   login: () => {},
   signup: () => {},
   logout: () => {},
+  deleteAccount: () => {},
   requireAuth: () => {},
 });
 const TabVisibilityContext = React.createContext({
@@ -130,6 +147,7 @@ const firebaseConfig = {
 let cachedApp;
 let cachedDb;
 let cachedStorage;
+let cachedAuth;
 
 const applyCdn = (url) => {
   if (!CDN_HOST || !url) return url;
@@ -184,6 +202,39 @@ const getStorageInstance = () => {
   }
 };
 
+const getAuthInstance = () => {
+  if (cachedAuth) return cachedAuth;
+  const app = getAppInstance();
+  if (!app) return null;
+  try {
+    cachedAuth = initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+    return cachedAuth;
+  } catch (error) {
+    console.warn('getAuth failed, falling back to default auth', error);
+    try {
+      cachedAuth = getAuth(app);
+      return cachedAuth;
+    } catch (err) {
+      console.warn('fallback getAuth failed', err);
+      return null;
+    }
+  }
+};
+
+const extractStoragePath = (url) => {
+  if (!url) return null;
+  try {
+    const afterO = url.split('/o/')[1];
+    if (!afterO) return null;
+    const pathEncoded = afterO.split('?')[0];
+    return decodeURIComponent(pathEncoded);
+  } catch {
+    return null;
+  }
+};
+
 const fallbackUploads = [
   {
     id: 'up1',
@@ -200,25 +251,32 @@ const fallbackUploads = [
 ];
 
 const ProfileScreen = ({ route }) => {
-  const { user, login, signup, logout } = useContext(AuthContext);
+  const { user, userUid, login, signup, logout, deleteAccount, requireAuth } = useContext(AuthContext);
   const [uploads, setUploads] = useState(fallbackUploads);
   const [avatarUri, setAvatarUri] = useState(null);
   const [bio, setBio] = useState('');
   const [showBioInput, setShowBioInput] = useState(false);
   const [preview, setPreview] = useState({ visible: false, item: null });
+  const storage = useMemo(() => getStorageInstance(), []);
   const db = useMemo(() => getDb(), []);
   const viewedHandle = route?.params?.userHandle || user;
   const isGuest = !user || user === '@guest';
   const isOwnProfile = !viewedHandle || viewedHandle === user;
   const profileCacheRef = useRef({});
+  const previewVideoRef = useRef(null);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followingList, setFollowingList] = useState([]);
   const [followersList, setFollowersList] = useState([]);
   const [listModal, setListModal] = useState({ visible: false, type: 'following' });
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [followPreview, setFollowPreview] = useState({ visible: false, handle: null, avatar: null, uploads: [] });
+  const followPreviewRefs = useRef({});
+  const navigation = useNavigation();
 
   useEffect(() => {
     if (!db || !viewedHandle) return undefined;
+    setUploads([]); // clear old user's uploads when switching
     const q = query(collection(db, 'feed'), where('uploader', '==', viewedHandle), orderBy('createdAt', 'desc'));
     return onSnapshot(
       q,
@@ -264,6 +322,44 @@ const ProfileScreen = ({ route }) => {
     const cached = profileCacheRef.current[viewedHandle || ''] || {};
     setAvatarUri(cached.avatarUri || null);
     setBio(cached.bio || '');
+  }, [viewedHandle]);
+
+  useEffect(() => {
+    // Load saved avatar for own profile from Firestore
+    const db = getDb();
+    if (!db || !userUid || !isOwnProfile) return;
+    const unsub = onSnapshot(
+      doc(db, 'users', userUid),
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.avatarUrl) setAvatarUri(data.avatarUrl);
+          if (data.bio) setBio(data.bio);
+        }
+      },
+      (err) => console.warn('Load avatar from Firestore failed', err)
+    );
+    return () => unsub();
+  }, [isOwnProfile, userUid]);
+
+  useEffect(() => {
+    // Load viewed profile avatar/bio by handle (for other users)
+    const db = getDb();
+    if (!db || !viewedHandle) return;
+    (async () => {
+      try {
+        const qProfile = query(collection(db, 'users'), where('handle', '==', viewedHandle));
+        const snap = await getDocs(qProfile);
+        const docSnap = snap.docs?.[0];
+        if (docSnap?.exists()) {
+          const data = docSnap.data();
+          if (data.avatarUrl) setAvatarUri(data.avatarUrl);
+          if (data.bio) setBio(data.bio);
+        }
+      } catch (err) {
+        console.warn('Load profile by handle failed', err);
+      }
+    })();
   }, [viewedHandle]);
 
   useEffect(() => {
@@ -315,6 +411,10 @@ const ProfileScreen = ({ route }) => {
   }, [db, isFollowing, isGuest, isOwnProfile, user, viewedHandle, login]);
 
   const handlePickAvatar = async () => {
+    if (!userUid) {
+      requireAuth();
+      return;
+    }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Permission needed', 'Enable photo library access to update your photo.');
@@ -326,14 +426,126 @@ const ProfileScreen = ({ route }) => {
     });
     if (result.canceled) return;
     const uri = result.assets?.[0]?.uri;
-    if (uri) setAvatarUri(uri);
+    if (!uri) return;
+
+    // Upload to Storage under avatars/{uid}/... (delete previous avatar if present)
+    const storage = getStorageInstance();
+    const db = getDb();
+    let prevAvatarUrl = null;
+    if (db) {
+      try {
+        const snap = await getDoc(doc(db, 'users', userUid));
+        if (snap.exists()) prevAvatarUrl = snap.data()?.avatarUrl || null;
+      } catch (err) {
+        console.warn('Fetch previous avatar failed', err);
+      }
+    }
+    let uploadedUrl = uri;
+    if (storage) {
+      try {
+        const resp = await fetch(uri);
+        const blob = await resp.blob();
+        const ext = (uri.split('.').pop() || 'jpg').split('?')[0];
+        const storageRef = ref(storage, `avatars/${userUid}/${Date.now()}.${ext}`);
+        await uploadBytes(storageRef, blob, { contentType: blob.type || 'image/jpeg' });
+        uploadedUrl = await getDownloadURL(storageRef);
+        const prevPath = extractStoragePath(prevAvatarUrl);
+        if (prevPath) {
+          try {
+            await deleteObject(ref(storage, prevPath));
+          } catch (err) {
+            console.warn('Delete previous avatar failed (safe to ignore)', err);
+          }
+        }
+      } catch (err) {
+        console.warn('Avatar upload failed, keeping local uri', err);
+      }
+    }
+    if (db) {
+      try {
+        await setDoc(
+          doc(db, 'users', userUid),
+          { avatarUrl: uploadedUrl, handle: viewedHandle || user },
+          { merge: true }
+        );
+        const authInst = getAuthInstance();
+        if (authInst?.currentUser) {
+          try {
+            await updateProfile(authInst.currentUser, { photoURL: uploadedUrl });
+          } catch (err) {
+            console.warn('Update profile photo failed', err);
+          }
+        }
+      } catch (err) {
+        console.warn('Save avatar url failed', err);
+      }
+    }
+    setAvatarUri(uploadedUrl);
+    const cacheKey = viewedHandle || user || '';
+    profileCacheRef.current[cacheKey] = {
+      ...(profileCacheRef.current[cacheKey] || {}),
+      avatarUri: uploadedUrl,
+      bio,
+    };
+  };
+
+  const openListPreview = async (handle) => {
+    const db = getDb();
+    if (!db || !handle) return;
+    try {
+      let avatarUrl = null;
+      const qProfile = query(collection(db, 'users'), where('handle', '==', handle));
+      const snapProfile = await getDocs(qProfile);
+      const docSnap = snapProfile.docs?.[0];
+      if (docSnap?.exists()) {
+        avatarUrl = docSnap.data()?.avatarUrl || null;
+      }
+      const qUploads = query(collection(db, 'feed'), where('uploader', '==', handle), orderBy('createdAt', 'desc'), limit(30));
+      const snapUploads = await getDocs(qUploads);
+      const uploadsList = snapUploads.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          title: data.title || 'Untitled',
+          mediaUrl: data.mediaUrl || data.thumbnail || '',
+          thumbnail: data.thumbnail || data.mediaUrl || '',
+          mediaType: data.mediaType || 'image',
+        };
+      });
+      setFollowPreview({ visible: true, handle, avatar: avatarUrl, uploads: uploadsList });
+    } catch (err) {
+      console.warn('List preview load failed', err);
+    }
+  };
+
+  const handleSaveBio = async () => {
+    setShowBioInput(false);
+    const db = getDb();
+    setBio((prev) => prev.trim());
+    if (db && userUid) {
+      try {
+        await setDoc(
+          doc(db, 'users', userUid),
+          { bio: bio.trim(), handle: viewedHandle || user },
+          { merge: true }
+        );
+      } catch (err) {
+        console.warn('Save bio failed', err);
+      }
+    }
+    const cacheKey = viewedHandle || user || '';
+    profileCacheRef.current[cacheKey] = {
+      ...(profileCacheRef.current[cacheKey] || {}),
+      avatarUri,
+      bio: bio.trim(),
+    };
   };
 
   if (isGuest) {
    return (
-     <SafeAreaView style={styles.screen}>
+     <SafeAreaView style={[styles.screen, { justifyContent: 'center', alignItems: 'center' }]}>
        <View style={[styles.heroCard, { alignItems: 'center' }]}>
-         <Text style={styles.title}>Welcome to FootyFeverz</Text>
+        <Text style={styles.title}>Welcome to FootyFeverz</Text>
          <Text style={styles.muted}>Log in or sign up to view your profile and uploads.</Text>
          <View style={styles.authRow}>
            <TouchableOpacity style={styles.authButton} onPress={signup}>
@@ -373,7 +585,7 @@ const ProfileScreen = ({ route }) => {
                         {
                           text: 'Delete',
                           style: 'destructive',
-                          onPress: () => logout(),
+                          onPress: () => deleteAccount?.(),
                         },
                       ])
                     }
@@ -435,7 +647,7 @@ const ProfileScreen = ({ route }) => {
                 placeholderTextColor={theme.muted}
                 multiline
               />
-              <TouchableOpacity onPress={() => setShowBioInput(false)}>
+              <TouchableOpacity onPress={handleSaveBio}>
                 <Text style={styles.addBioText}>Save</Text>
               </TouchableOpacity>
             </View>
@@ -487,15 +699,72 @@ const ProfileScreen = ({ route }) => {
               <TouchableWithoutFeedback>
                 <View style={styles.previewContent}>
                   {preview.item?.mediaType === 'video' ? (
-                    <Video
-                      source={{ uri: preview.item.mediaUrl }}
-                      style={styles.previewMedia}
-                      resizeMode="contain"
-                      shouldPlay
-                      useNativeControls
-                    />
+                    <View style={{ width: '100%', height: '90%', justifyContent: 'center', alignItems: 'center' }}>
+                      <Video
+                        ref={previewVideoRef}
+                        source={{ uri: preview.item.mediaUrl }}
+                        style={styles.previewMedia}
+                        resizeMode="contain"
+                        shouldPlay={previewPlaying}
+                        useNativeControls
+                      />
+                      {!previewPlaying ? (
+                        <TouchableOpacity
+                          style={styles.playOverlay}
+                          onPress={() => {
+                            setPreviewPlaying(true);
+                            previewVideoRef.current?.presentFullscreenPlayer?.();
+                            previewVideoRef.current?.playAsync?.();
+                          }}
+                        >
+                          <Ionicons name="play-circle" size={64} color="#fff" />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
                   ) : preview.item?.mediaUrl ? (
                     <Image source={{ uri: preview.item.mediaUrl }} style={styles.previewMedia} />
+                  ) : null}
+                  {isOwnProfile && preview.item ? (
+                    <TouchableOpacity
+                      style={[styles.followButton, { backgroundColor: theme.danger, marginTop: 12 }]}
+                      onPress={async () => {
+                        if (!db || !storage || !preview.item?.id) return;
+                        Alert.alert('Delete clip', 'Are you sure you want to delete this clip?', [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Delete',
+                            style: 'destructive',
+                            onPress: async () => {
+                              let paths = [];
+                              try {
+                                const docRef = doc(db, 'feed', preview.item.id);
+                                const snap = await getDoc(docRef);
+                                if (snap.exists()) {
+                                  const data = snap.data();
+                                  paths = [data.mediaUrl, data.thumbnail].map(extractStoragePath).filter(Boolean);
+                                } else {
+                                  paths = [preview.item.mediaUrl, preview.item.thumbnail].map(extractStoragePath).filter(Boolean);
+                                }
+                                await deleteDoc(docRef);
+                              } catch (err) {
+                                console.warn('Delete doc failed', err);
+                              }
+                              for (const p of paths) {
+                                try {
+                                  await deleteObject(ref(storage, p));
+                                } catch (err) {
+                                  console.warn('Delete storage failed', p, err?.message || err);
+                                }
+                              }
+                              setUploads((prev) => prev.filter((u) => u.id !== preview.item.id));
+                              setPreview({ visible: false, item: null });
+                            },
+                          },
+                        ]);
+                      }}
+                    >
+                      <Text style={styles.followButtonText}>Delete</Text>
+                    </TouchableOpacity>
                   ) : null}
                   <TouchableOpacity style={styles.previewClose} onPress={() => setPreview({ visible: false, item: null })}>
                     <Text style={styles.previewCloseText}>Close</Text>
@@ -524,15 +793,89 @@ const ProfileScreen = ({ route }) => {
                     <Text style={styles.muted}>No users yet.</Text>
                   ) : (
                     (listModal.type === 'followers' ? followersList : followingList).map((h) => (
-                      <Text key={`lst-${h}`} style={styles.followListItem}>
-                        {h}
-                      </Text>
+                      <TouchableOpacity
+                        key={`lst-${h}`}
+                        onPress={() => {
+                          setListModal({ visible: false, type: 'following' });
+                          openListPreview(h);
+                        }}
+                      >
+                        <Text style={styles.followListItem}>{h}</Text>
+                      </TouchableOpacity>
                     ))
                   )}
                 </ScrollView>
                 <TouchableOpacity
                   style={styles.previewClose}
                   onPress={() => setListModal({ visible: false, type: 'following' })}
+                >
+                  <Text style={styles.previewCloseText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+      <Modal
+        visible={followPreview.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFollowPreview({ visible: false, handle: null, avatar: null, uploads: [] })}
+      >
+        <TouchableWithoutFeedback
+          onPress={() => setFollowPreview({ visible: false, handle: null, avatar: null, uploads: [] })}
+        >
+          <View style={styles.previewOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.previewContent, { backgroundColor: '#fff', padding: 16, borderRadius: 16 }]}>
+                {followPreview.avatar ? (
+                  <Image source={{ uri: followPreview.avatar }} style={{ width: 80, height: 80, borderRadius: 40, marginBottom: 10 }} />
+                ) : null}
+                <Text style={[styles.panelTitle, { color: theme.text }]}>{followPreview.handle}</Text>
+                <ScrollView contentContainerStyle={{ paddingVertical: 8 }}>
+                  {followPreview.uploads.length === 0 ? (
+                    <Text style={styles.muted}>No uploads yet.</Text>
+                  ) : (
+                    <View style={styles.previewGrid}>
+                      {followPreview.uploads.map((it) => (
+                        <View key={it.id} style={styles.previewGridItem}>
+                          {it.mediaType === 'video' ? (
+                            <TouchableOpacity
+                              activeOpacity={0.85}
+                              onPress={() => {
+                                const ref = followPreviewRefs.current[it.id];
+                                ref?.presentFullscreenPlayer?.();
+                                ref?.playAsync?.();
+                              }}
+                            >
+                              <Video
+                                ref={(r) => {
+                                  if (r) followPreviewRefs.current[it.id] = r;
+                                  else delete followPreviewRefs.current[it.id];
+                                }}
+                                source={{ uri: it.mediaUrl }}
+                                style={styles.previewGridMedia}
+                                resizeMode="cover"
+                                shouldPlay={false}
+                                isMuted
+                                usePoster
+                                posterSource={it.thumbnail ? { uri: it.thumbnail } : undefined}
+                              />
+                            </TouchableOpacity>
+                          ) : (
+                            <Image source={{ uri: it.mediaUrl }} style={styles.previewGridMedia} />
+                          )}
+                          <Text numberOfLines={1} style={styles.previewGridTitle}>
+                            {it.title}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </ScrollView>
+                <TouchableOpacity
+                  style={styles.previewClose}
+                  onPress={() => setFollowPreview({ visible: false, handle: null, avatar: null, uploads: [] })}
                 >
                   <Text style={styles.previewCloseText}>Close</Text>
                 </TouchableOpacity>
@@ -578,15 +921,22 @@ const FeedScreen = ({ onReady }) => {
   const [firstReady, setFirstReady] = useState(false);
   const lastDocRef = useRef(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [previewLoading, setPreviewLoading] = useState(false);
   const likeTimersRef = useRef({});
   const lastSentLikeRef = useRef({});
   const likedRef = useRef({});
   const cacheLoadedRef = useRef(false);
+  const captionResolverRef = useRef(null);
   const isGuest = !user || user === '@guest';
   const navigation = useNavigation();
   const [profilePreview, setProfilePreview] = useState({ visible: false, handle: null });
   const [previewUploads, setPreviewUploads] = useState([]);
   const [previewFollowing, setPreviewFollowing] = useState(false);
+  const [captionModalVisible, setCaptionModalVisible] = useState(false);
+  const [captionInput, setCaptionInput] = useState('');
+  const [captionVisible, setCaptionVisible] = useState(false);
+  const [captionText, setCaptionText] = useState('');
+  const previewVideoRefs = useRef({});
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
     if (viewableItems?.length) {
@@ -594,6 +944,31 @@ const FeedScreen = ({ onReady }) => {
       if (nextId) setActiveId(nextId);
     }
   }).current;
+
+  useEffect(() => {
+    const refs = videoRefs.current;
+    if (profilePreview.visible) {
+      Object.values(refs).forEach((ref) => ref?.setStatusAsync?.({ shouldPlay: false }));
+    } else if (isFocused && activeId && refs[activeId]) {
+      refs[activeId]?.setStatusAsync?.({ shouldPlay: true, isMuted: false });
+    }
+  }, [profilePreview.visible, activeId, isFocused]);
+
+  // Reset like state when user changes to avoid cross-user toggles
+  useEffect(() => {
+    setLiked({});
+    likedRef.current = {};
+    lastSentLikeRef.current = {};
+    Object.values(likeTimersRef.current).forEach((t) => clearTimeout(t));
+    likeTimersRef.current = {};
+  }, [user]);
+
+  useEffect(() => {
+    // Ensure active video starts once splash is gone
+    if (!splashVisible && isFocused && activeId) {
+      videoRefs.current[activeId]?.setStatusAsync?.({ shouldPlay: true, isMuted: false });
+    }
+  }, [splashVisible, isFocused, activeId]);
 
   const mapFeedDoc = useCallback((docSnap) => {
     const data = docSnap.data();
@@ -608,6 +983,7 @@ const FeedScreen = ({ onReady }) => {
       likes: data.likes || 0,
       comments: data.comments || 0,
       mediaType: data.mediaType || 'image',
+      createdAt: data.createdAt?.toMillis?.() || data.createdAt || Date.now(),
       commentsList: [],
     };
   }, []);
@@ -698,6 +1074,14 @@ const FeedScreen = ({ onReady }) => {
     fetchPage(true);
   }, [fetchPage]);
 
+  const promptCaption = useCallback(() => {
+    return new Promise((resolve) => {
+      captionResolverRef.current = resolve;
+      setCaptionInput('');
+      setCaptionModalVisible(true);
+    });
+  }, []);
+
   useEffect(() => {
     if (!feed.length) return;
     if (!activeId || !feed.find((item) => item.id === activeId)) {
@@ -712,8 +1096,8 @@ const FeedScreen = ({ onReady }) => {
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.08, duration: 700, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 0.92, duration: 700, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.06, duration: 700, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.0, duration: 700, easing: Easing.in(Easing.quad), useNativeDriver: true }),
       ])
     );
     loop.start();
@@ -782,6 +1166,13 @@ const FeedScreen = ({ onReady }) => {
   }, [db, hasLoaded, onReady]);
 
   useEffect(() => {
+    // Hide splash if no feed items after load completes
+    if (hasLoaded && (!feed || feed.length === 0)) {
+      setSplashVisible(false);
+    }
+  }, [hasLoaded, feed]);
+
+  useEffect(() => {
     const currentKey = activeId;
     Object.entries(videoRefs.current).forEach(([id, ref]) => {
       if (!ref) return;
@@ -813,11 +1204,13 @@ const FeedScreen = ({ onReady }) => {
       requireAuth();
       return;
     }
-    if (!commentModal.item || !commentModal.text.trim()) {
+    const maxLen = 300;
+    const cleanText = (commentModal.text || '').replace(/\s+/g, ' ').trim().slice(0, maxLen);
+    if (!commentModal.item || !cleanText) {
       setCommentModal({ visible: false, item: null, text: '' });
       return;
     }
-    const newComment = { author: user || '@anon', text: commentModal.text.trim(), createdAt: Date.now() };
+    const newComment = { author: user || '@anon', text: cleanText, createdAt: Date.now() };
     setFeed((prev) =>
       prev.map((it) =>
         it.id === commentModal.item.id
@@ -861,7 +1254,9 @@ const FeedScreen = ({ onReady }) => {
               id: d.id,
               title: data.title || 'Untitled',
               mediaUrl: data.mediaUrl || data.thumbnail || '',
+              thumbnail: data.thumbnail || data.mediaUrl || '',
               mediaType: data.mediaType || 'image',
+              uploaderAvatar: data.uploaderAvatar || '',
             };
           });
           setPreviewUploads(list);
@@ -891,12 +1286,31 @@ const FeedScreen = ({ onReady }) => {
   );
 
   const openProfilePreview = useCallback(
-    (handle) => {
+    async (handle) => {
       setProfilePreview({ visible: true, handle });
       loadProfilePreview(handle);
       checkPreviewFollowing(handle);
+      // Fetch avatar directly from users collection
+      if (db && handle) {
+        try {
+          const qProfile = query(collection(db, 'users'), where('handle', '==', handle));
+          const snap = await getDocs(qProfile);
+          const docSnap = snap.docs?.[0];
+          if (docSnap?.exists()) {
+            const data = docSnap.data();
+            if (data.avatarUrl) {
+              setPreviewUploads((prev) => {
+                // inject avatar into existing list items
+                return prev.map((it) => ({ ...it, uploaderAvatar: data.avatarUrl }));
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('Preview avatar fetch failed', err);
+        }
+      }
     },
-    [checkPreviewFollowing, loadProfilePreview]
+    [checkPreviewFollowing, loadProfilePreview, db]
   );
 
   const togglePreviewFollow = useCallback(async () => {
@@ -956,6 +1370,10 @@ const FeedScreen = ({ onReady }) => {
       if (!storage) throw new Error('Storage not configured');
       const response = await fetch(uri);
       const blob = await response.blob();
+      const maxBytes = 100 * 1024 * 1024; // 100MB
+      if (blob.size && blob.size > maxBytes) {
+        throw new Error('File too large');
+      }
       const extGuess = uri.split('.').pop()?.split('?')[0] || (isVideo ? 'mp4' : 'jpg');
       const storageRef = ref(
         storage,
@@ -996,6 +1414,23 @@ const FeedScreen = ({ onReady }) => {
       Alert.alert('Upload limit reached', 'You can upload up to 30 clips.');
       return;
     }
+    // simple per-user daily throttle: max 5 uploads in last 24h
+    try {
+      const quotaRaw = await FileSystem.readAsStringAsync(`${FileSystem.documentDirectory || ''}upload-quota.json`);
+      const quota = JSON.parse(quotaRaw || '{}');
+      const now = Date.now();
+      const windowMs = 24 * 60 * 60 * 1000;
+      const prev = quota[user] || [];
+      const recent = prev.filter((ts) => now - ts < windowMs);
+      if (recent.length >= 5) {
+        Alert.alert('Upload limit', 'You can upload up to 5 clips per day.');
+        return;
+      }
+      quota[user] = recent;
+      await FileSystem.writeAsStringAsync(`${FileSystem.documentDirectory || ''}upload-quota.json`, JSON.stringify(quota));
+    } catch (err) {
+      // ignore quota read errors; continue
+    }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Permission needed', 'Enable photo/video library access to add a clip.');
@@ -1013,6 +1448,12 @@ const FeedScreen = ({ onReady }) => {
     const asset = result.assets?.[0];
     const uri = asset?.uri || '';
     const isVideo = asset?.type === 'video';
+    const sizeBytes = asset?.fileSize || 0;
+    const maxBytes = 100 * 1024 * 1024; // 100MB
+    if (sizeBytes && sizeBytes > maxBytes) {
+      Alert.alert('File too large', 'Please upload a file smaller than 100MB.');
+      return;
+    }
     let thumb = uri;
     let uploadSource = uri;
 
@@ -1039,6 +1480,10 @@ const FeedScreen = ({ onReady }) => {
 
     let uploadedUrl = uploadSource;
     let uploadedThumb = thumb;
+    const caption = await promptCaption();
+    if (caption === null || caption === undefined) {
+      return;
+    }
     if (db && storage && uploadSource) {
       setUploading(true);
       setUploadProgress(0);
@@ -1054,7 +1499,9 @@ const FeedScreen = ({ onReady }) => {
         console.warn('Upload failed, falling back locally', error?.message || error);
         Alert.alert(
           'Upload failed',
-          'Could not upload to Firebase Storage. Check storage rules/bucket and try again.'
+          error?.message === 'File too large'
+            ? 'File too large. Please upload a file smaller than 100MB.'
+            : 'Could not upload to Firebase Storage. Check storage rules/bucket and try again.'
         );
       } finally {
         setUploading(false);
@@ -1065,9 +1512,9 @@ const FeedScreen = ({ onReady }) => {
     if (db) {
       try {
         const payload = {
-          title: 'New footy clip',
+          title: caption?.trim() || 'Untitled clip',
           club: '',
-          description: 'Describe your moment...',
+          description: '',
           mediaUrl: uploadedUrl,
           thumbnail: uploadedThumb || uploadedUrl,
           uploader: user,
@@ -1096,15 +1543,16 @@ const FeedScreen = ({ onReady }) => {
     setFeed((prev) => [
       {
         id: Date.now().toString(),
-        title: 'New footy clip',
+        title: caption?.trim() || 'Untitled clip',
         club: '',
-        description: 'Describe your moment...',
+        description: '',
         mediaUrl: uploadedUrl,
         thumbnail: uploadedThumb || uploadedUrl,
         uploader: user,
         likes: 0,
         comments: 0,
         mediaType: isVideo ? 'video' : 'image',
+        createdAt: Date.now(),
       },
       ...prev,
     ].reduce((acc, item) => {
@@ -1112,7 +1560,17 @@ const FeedScreen = ({ onReady }) => {
       acc.push(item);
       return acc;
     }, []));
-  }, [db, storage, uploadToStorage, feed.length, dedupeById, user, requireAuth, isGuest]);
+    try {
+      const quotaRaw = await FileSystem.readAsStringAsync(`${FileSystem.documentDirectory || ''}upload-quota.json`);
+      const quota = JSON.parse(quotaRaw || '{}');
+      const now = Date.now();
+      const prevList = quota[user] || [];
+      quota[user] = [...prevList, now];
+      await FileSystem.writeAsStringAsync(`${FileSystem.documentDirectory || ''}upload-quota.json`, JSON.stringify(quota));
+    } catch {
+      // ignore
+    }
+  }, [db, storage, uploadToStorage, feed.length, dedupeById, user, requireAuth, isGuest, promptCaption]);
 
   const renderItem = ({ item }) => {
     const isActive = item.id === activeId;
@@ -1135,37 +1593,49 @@ const FeedScreen = ({ onReady }) => {
       <View style={[styles.tiktokCard, { height: cardHeight }]}>
         {item.mediaType === 'video' && item.mediaUrl ? (
           <TouchableWithoutFeedback onPress={onTogglePlay}>
-            <Video
-              key={videoKey}
-              ref={(ref) => {
-                if (ref) {
-                  videoRefs.current[item.id] = ref;
-                } else {
-                  delete videoRefs.current[item.id];
-                }
-              }}
-              source={{ uri: item.mediaUrl }}
-              style={styles.tiktokImage}
-              resizeMode="cover"
-              shouldPlay={shouldPlay}
-              isLooping
-              isMuted={!isActive || !isFocused}
-              useNativeControls={false}
-              usePoster
-              posterSource={item.thumbnail ? { uri: item.thumbnail } : undefined}
-              onPlaybackStatusUpdate={(status) => {
-                if (status?.isLoaded && isActive && !firstReady) {
-                  setFirstReady(true);
-                  setSplashVisible(false);
-                }
-                if (!status.isLoaded || !status.durationMillis) return;
-                const pct = Math.min(1, Math.max(0, status.positionMillis / status.durationMillis));
-                setPlaybackProgress((prev) => {
-                  if (prev[item.id] === pct) return prev;
-                  return { ...prev, [item.id]: pct };
-                });
-              }}
-            />
+            <View style={{ flex: 1, backgroundColor: '#000' }}>
+              <Video
+                key={videoKey}
+                ref={(ref) => {
+                  if (ref) {
+                    videoRefs.current[item.id] = ref;
+                  } else {
+                    delete videoRefs.current[item.id];
+                  }
+                }}
+                source={{ uri: item.mediaUrl }}
+                style={styles.tiktokImage}
+                resizeMode="contain"
+                shouldPlay={shouldPlay}
+                isLooping
+                isMuted={!isActive || !isFocused}
+                useNativeControls={false}
+                usePoster={!isActive}
+                posterSource={item.thumbnail ? { uri: item.thumbnail } : undefined}
+                onReadyForDisplay={() => {
+                  if (isActive && !firstReady) {
+                    setFirstReady(true);
+                    setSplashVisible(false);
+                  }
+                  if (isActive && isFocused) {
+                    videoRefs.current[item.id]?.playAsync?.();
+                    videoRefs.current[item.id]?.setStatusAsync?.({ shouldPlay: true, isMuted: false });
+                  }
+                }}
+                onPlaybackStatusUpdate={(status) => {
+                  if (status?.isLoaded && isActive && !firstReady) {
+                    setFirstReady(true);
+                    setSplashVisible(false);
+                  }
+                  if (!status.isLoaded || !status.durationMillis) return;
+                  const pct = Math.min(1, Math.max(0, status.positionMillis / status.durationMillis));
+                  setPlaybackProgress((prev) => {
+                    if (prev[item.id] === pct) return prev;
+                    return { ...prev, [item.id]: pct };
+                  });
+                }}
+              />
+            </View>
           </TouchableWithoutFeedback>
         ) : item.mediaUrl ? (
           <Image source={{ uri: item.mediaUrl }} style={styles.tiktokImage} />
@@ -1190,7 +1660,7 @@ const FeedScreen = ({ onReady }) => {
               <Text style={[styles.uploaderHandle, styles.overlayText]}>{item.uploader}</Text>
             </TouchableOpacity>
             <Text style={[styles.cardTitle, styles.overlayText]}>{item.title}</Text>
-            <Text style={[styles.cardDesc, styles.overlayMuted]}>{item.description}</Text>
+              <Text style={[styles.cardDesc, styles.overlayMuted]}>{item.description}</Text>
             <View style={styles.clubTagRow}>
               {item.club ? (
                 <View style={styles.clubTag}>
@@ -1198,7 +1668,7 @@ const FeedScreen = ({ onReady }) => {
                   <Text style={styles.clubTagText}>{item.club}</Text>
                 </View>
               ) : null}
-              <Text style={[styles.timeago, styles.overlayMuted]}>Just now</Text>
+              <Text style={[styles.timeago, styles.overlayMuted]}>{formatTimeAgo(item.createdAt)}</Text>
             </View>
           </View>
 
@@ -1253,7 +1723,12 @@ const FeedScreen = ({ onReady }) => {
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       {splashVisible ? (
         <View style={[styles.splashOverlay, { paddingBottom: tabBarHeight }]}>
-          <Animated.Image source={splashLogo} style={[styles.splashLogo, { transform: [{ scale: pulseAnim }] }]} resizeMode="contain" />
+          <Animated.Image
+            source={splashLogo}
+            style={[styles.splashLogo, { transform: [{ scale: pulseAnim }] }]}
+            resizeMode="contain"
+            fadeDuration={0}
+          />
         </View>
       ) : null}
       <FlatList
@@ -1262,7 +1737,7 @@ const FeedScreen = ({ onReady }) => {
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
         snapToInterval={cardHeight}
-        snapToAlignment="center"
+        snapToAlignment="start"
         decelerationRate="fast"
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
@@ -1274,8 +1749,6 @@ const FeedScreen = ({ onReady }) => {
         overScrollMode="never"
         scrollEventThrottle={16}
         disableIntervalMomentum
-        snapToStart
-        snapToEnd
         onEndReached={() => fetchPage(false)}
         onEndReachedThreshold={0.6}
         refreshing={refreshing}
@@ -1313,35 +1786,89 @@ const FeedScreen = ({ onReady }) => {
         visible={profilePreview.visible}
         transparent
         animationType="fade"
-        onRequestClose={() => setProfilePreview({ visible: false, handle: null })}
+        onRequestClose={() => {
+          setPreviewLoading(false);
+          setProfilePreview({ visible: false, handle: null });
+        }}
       >
-        <TouchableWithoutFeedback onPress={() => setProfilePreview({ visible: false, handle: null })}>
+        <TouchableWithoutFeedback
+          onPress={() => {
+            setPreviewLoading(false);
+            setProfilePreview({ visible: false, handle: null });
+          }}
+        >
           <View style={styles.previewOverlay}>
             <TouchableWithoutFeedback>
               <View style={[styles.previewContent, { backgroundColor: '#fff', padding: 16, borderRadius: 16 }]}>
+                {previewUploads.length > 0 && previewUploads[0]?.uploaderAvatar ? (
+                  <Image
+                    source={{ uri: previewUploads[0].uploaderAvatar }}
+                    style={{ width: 80, height: 80, borderRadius: 40, marginBottom: 10 }}
+                  />
+                ) : null}
                 <Text style={[styles.panelTitle, { color: theme.text }]}>{profilePreview.handle}</Text>
                 {!isGuest && profilePreview.handle !== user ? (
                   <TouchableOpacity style={styles.followButton} onPress={togglePreviewFollow}>
                     <Text style={styles.followButtonText}>{previewFollowing ? 'Unfollow' : 'Follow'}</Text>
                   </TouchableOpacity>
                 ) : null}
-                <ScrollView contentContainerStyle={{ gap: 10 }}>
+                <ScrollView contentContainerStyle={{ paddingVertical: 8 }}>
                   {previewUploads.length === 0 ? (
                     <Text style={styles.muted}>No uploads yet.</Text>
                   ) : (
-                    previewUploads.map((it) => (
-                      <View key={it.id} style={styles.commentBubble}>
-                        <Text style={styles.commentAuthor}>{it.title}</Text>
-                        {it.mediaType === 'video' ? (
-                          <Video source={{ uri: it.mediaUrl }} style={{ width: '100%', height: 200 }} useNativeControls />
-                        ) : (
-                          <Image source={{ uri: it.mediaUrl }} style={{ width: '100%', height: 200, borderRadius: 10 }} />
-                        )}
-                      </View>
-                    ))
+                    <View style={styles.previewGrid}>
+                      {previewUploads.map((it) => (
+                        <View key={it.id} style={styles.previewGridItem}>
+                          {it.mediaType === 'video' ? (
+                            <TouchableOpacity
+                              style={styles.previewGridMedia}
+                              activeOpacity={0.85}
+                              onPress={() => {
+                                const ref = previewVideoRefs.current[it.id];
+                                ref?.presentFullscreenPlayer?.();
+                                ref?.playAsync?.();
+                              }}
+                            >
+                              {previewLoading ? (
+                                <ActivityIndicator color={theme.secondary} />
+                              ) : (
+                                <Ionicons name="play-circle" size={42} color="#fff" style={{ position: 'absolute', zIndex: 2 }} />
+                              )}
+                              <Video
+                                ref={(r) => {
+                                  if (r) previewVideoRefs.current[it.id] = r;
+                                  else delete previewVideoRefs.current[it.id];
+                                }}
+                                source={{ uri: it.mediaUrl }}
+                                style={styles.previewGridMedia}
+                                resizeMode="cover"
+                                shouldPlay={false}
+                                isMuted
+                                usePoster
+                                posterSource={it.mediaUrl ? { uri: it.mediaUrl } : undefined}
+                                onLoadStart={() => setPreviewLoading(true)}
+                                onReadyForDisplay={() => setPreviewLoading(false)}
+                                onError={() => setPreviewLoading(false)}
+                              />
+                            </TouchableOpacity>
+                          ) : (
+                            <Image source={{ uri: it.mediaUrl }} style={styles.previewGridMedia} />
+                          )}
+                          <Text numberOfLines={1} style={styles.previewGridTitle}>
+                            {it.title}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
                   )}
                 </ScrollView>
-                <TouchableOpacity style={styles.previewClose} onPress={() => setProfilePreview({ visible: false, handle: null })}>
+                <TouchableOpacity
+                  style={styles.previewClose}
+                  onPress={() => {
+                    setPreviewLoading(false);
+                    setProfilePreview({ visible: false, handle: null });
+                  }}
+                >
                   <Text style={styles.previewCloseText}>Close</Text>
                 </TouchableOpacity>
               </View>
@@ -1406,6 +1933,61 @@ const FeedScreen = ({ onReady }) => {
           </KeyboardAvoidingView>
         </TouchableWithoutFeedback>
       </Modal>
+      <Modal
+        visible={captionModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setCaptionModalVisible(false);
+          captionResolverRef.current?.(null);
+        }}
+      >
+        <TouchableWithoutFeedback
+          onPress={() => {
+            setCaptionModalVisible(false);
+            captionResolverRef.current?.(null);
+          }}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight + 12 : 0}
+            style={styles.modalOverlay}
+          >
+            <TouchableWithoutFeedback>
+              <View style={styles.modalCard}>
+                <Text style={styles.panelTitle}>Add caption</Text>
+                <TextInput
+                  style={[styles.commentInput, { minHeight: 60 }]}
+                  value={captionInput}
+                  onChangeText={setCaptionInput}
+                  placeholder="Caption"
+                  placeholderTextColor={theme.muted}
+                  multiline
+                />
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setCaptionModalVisible(false);
+                      captionResolverRef.current?.(null);
+                    }}
+                  >
+                    <Text style={styles.addBioText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.commentSendButton}
+                    onPress={() => {
+                      setCaptionModalVisible(false);
+                      captionResolverRef.current?.(captionInput || '');
+                    }}
+                  >
+                    <Text style={styles.commentSendText}>Use caption</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1425,6 +2007,9 @@ const ForumScreen = () => {
   const [previewFollowing, setPreviewFollowing] = useState(false);
   const [previewFollowingList, setPreviewFollowingList] = useState([]);
   const [previewFollowersList, setPreviewFollowersList] = useState([]);
+  const [forumPreviewLoading, setForumPreviewLoading] = useState(false);
+  const forumPreviewVideoRefs = useRef({});
+  const [commentPage, setCommentPage] = useState(0);
 
   const commentsForTeam = activeTeam ? forumComments[activeTeam.name] || [] : [];
 
@@ -1435,6 +2020,7 @@ const ForumScreen = () => {
       detailScrollRef.current?.scrollTo({ y: 1, animated: false });
       detailScrollRef.current?.scrollTo({ y: 0, animated: false });
     }, 80);
+    setCommentPage(0);
     return () => clearTimeout(timer);
   }, [activeTeam, commentsForTeam.length]);
 
@@ -1474,7 +2060,8 @@ const ForumScreen = () => {
       return;
     }
     if (!activeTeam) return;
-    const trimmed = commentText.trim();
+    const maxLen = 300;
+    const trimmed = (commentText || '').replace(/\s+/g, ' ').trim().slice(0, maxLen);
     if (!trimmed && !commentImage) return;
 
     let imageUrl = '';
@@ -1535,25 +2122,26 @@ const ForumScreen = () => {
   };
 
   const loadForumPreview = useCallback(
-    (handle) => {
-      if (!db || !handle) return undefined;
-      const q = query(collection(db, 'feed'), where('uploader', '==', handle), orderBy('createdAt', 'desc'));
-      return onSnapshot(
-        q,
-        (snap) => {
-          const list = snap.docs.map((d) => {
-            const data = d.data();
-            return {
-              id: d.id,
-              title: data.title || 'Untitled',
-              mediaUrl: data.mediaUrl || data.thumbnail || '',
-              mediaType: data.mediaType || 'image',
-            };
-          });
-          setPreviewUploads(list);
-        },
-        (err) => console.warn('Forum preview load failed', err)
-      );
+    async (handle) => {
+      if (!db || !handle) return;
+      try {
+        const q = query(collection(db, 'feed'), where('uploader', '==', handle), orderBy('createdAt', 'desc'));
+        const snap = await getDocs(q);
+        const list = snap.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            title: data.title || 'Untitled',
+            mediaUrl: data.mediaUrl || data.thumbnail || '',
+            thumbnail: data.thumbnail || data.mediaUrl || '',
+            mediaType: data.mediaType || 'image',
+            uploaderAvatar: data.uploaderAvatar || '',
+          };
+        });
+        setPreviewUploads(list);
+      } catch (err) {
+        console.warn('Forum preview load failed', err);
+      }
     },
     [db]
   );
@@ -1577,12 +2165,27 @@ const ForumScreen = () => {
   );
 
   const openProfilePreview = useCallback(
-    (handle) => {
+    async (handle) => {
       setPreviewState({ visible: true, handle });
       loadForumPreview(handle);
       watchPreviewFollow(handle);
+      if (db && handle) {
+        try {
+          const qProfile = query(collection(db, 'users'), where('handle', '==', handle));
+          const snap = await getDocs(qProfile);
+          const docSnap = snap.docs?.[0];
+          if (docSnap?.exists()) {
+            const data = docSnap.data();
+            if (data.avatarUrl) {
+              setPreviewUploads((prev) => prev.map((it) => ({ ...it, uploaderAvatar: data.avatarUrl })));
+            }
+          }
+        } catch (err) {
+          console.warn('Forum preview avatar fetch failed', err);
+        }
+      }
     },
-    [loadForumPreview, watchPreviewFollow]
+    [db, loadForumPreview, watchPreviewFollow]
   );
 
   const togglePreviewFollow = useCallback(async () => {
@@ -1634,22 +2237,55 @@ const ForumScreen = () => {
                 <Image source={activeTeam.logo} style={styles.forumLogoImageModal} resizeMode="contain" />
                 <Text style={styles.forumTeamLabelModal}>{activeTeam.name}</Text>
               </View>
-                {commentsForTeam.length === 0 ? (
-                  <Text style={styles.muted}>No posts yet. Start the discussion.</Text>
-                ) : (
-                  commentsForTeam.map((c, idx) => (
-                    <View key={`${activeTeam.name}-${idx}`} style={styles.commentBubble}>
-                      <Text
-                        style={styles.commentAuthor}
-                        onPress={() => openProfilePreview(c.author)}
-                      >
-                        {c.author || '@anon'}
-                      </Text>
-                      {c.text ? <Text style={styles.commentText}>{c.text}</Text> : null}
-                      {c.imageUrl ? <Image source={{ uri: c.imageUrl }} style={styles.commentImage} /> : null}
-                    </View>
-                  ))
-                )}
+                {(() => {
+                  const pageSize = 50;
+                  const totalPages = Math.max(1, Math.ceil(commentsForTeam.length / pageSize));
+                  const currentPage = Math.min(commentPage, totalPages - 1);
+                  const slice = commentsForTeam.slice(
+                    currentPage * pageSize,
+                    currentPage * pageSize + pageSize
+                  );
+                  if (commentsForTeam.length === 0) {
+                    return <Text style={styles.muted}>No posts yet. Start the discussion.</Text>;
+                  }
+                  return (
+                    <>
+                      {slice.map((c, idx) => (
+                        <View key={`${activeTeam.name}-${currentPage * pageSize + idx}`} style={styles.commentBubble}>
+                          <Text
+                            style={styles.commentAuthor}
+                            onPress={() => openProfilePreview(c.author)}
+                          >
+                            {c.author || '@anon'}
+                          </Text>
+                          {c.text ? <Text style={styles.commentText}>{c.text}</Text> : null}
+                          {c.imageUrl ? <Image source={{ uri: c.imageUrl }} style={styles.commentImage} /> : null}
+                        </View>
+                      ))}
+                      {totalPages > 1 ? (
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                          <TouchableOpacity
+                            disabled={currentPage === 0}
+                            onPress={() => setCommentPage((p) => Math.max(0, p - 1))}
+                            style={[styles.followButton, { opacity: currentPage === 0 ? 0.4 : 1, paddingHorizontal: 12, paddingVertical: 8 }]}
+                          >
+                            <Text style={styles.followButtonText}>Prev</Text>
+                          </TouchableOpacity>
+                          <Text style={styles.muted}>
+                            Page {currentPage + 1} / {totalPages}
+                          </Text>
+                          <TouchableOpacity
+                            disabled={currentPage >= totalPages - 1}
+                            onPress={() => setCommentPage((p) => Math.min(totalPages - 1, p + 1))}
+                            style={[styles.followButton, { opacity: currentPage >= totalPages - 1 ? 0.4 : 1, paddingHorizontal: 12, paddingVertical: 8 }]}
+                          >
+                            <Text style={styles.followButtonText}>Next</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : null}
+                    </>
+                  );
+                })()}
             </ScrollView>
             <View style={styles.commentFormFixed}>
               <TextInput
@@ -1690,38 +2326,89 @@ const ForumScreen = () => {
           visible={previewState.visible}
           transparent
           animationType="fade"
-          onRequestClose={() => setPreviewState({ visible: false, handle: null })}
+        onRequestClose={() => {
+          setForumPreviewLoading(false);
+          setPreviewState({ visible: false, handle: null });
+        }}
+      >
+        <TouchableWithoutFeedback
+          onPress={() => {
+            setForumPreviewLoading(false);
+            setPreviewState({ visible: false, handle: null });
+          }}
         >
-          <TouchableWithoutFeedback onPress={() => setPreviewState({ visible: false, handle: null })}>
-            <View style={styles.previewOverlay}>
-              <TouchableWithoutFeedback>
-                <View style={[styles.previewContent, { backgroundColor: '#fff', padding: 16, borderRadius: 16 }]}>
-                  <Text style={[styles.panelTitle, { color: theme.text }]}>{previewState.handle}</Text>
-                  {previewState.handle && previewState.handle !== user ? (
+          <View style={styles.previewOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.previewContent, { backgroundColor: '#fff', padding: 16, borderRadius: 16 }]}>
+                {previewUploads.length > 0 && previewUploads[0]?.uploaderAvatar ? (
+                  <Image
+                    source={{ uri: previewUploads[0].uploaderAvatar }}
+                    style={{ width: 80, height: 80, borderRadius: 40, marginBottom: 10 }}
+                  />
+                ) : null}
+                <Text style={[styles.panelTitle, { color: theme.text }]}>{previewState.handle}</Text>
+                {previewState.handle && previewState.handle !== user ? (
                     <TouchableOpacity style={styles.followButton} onPress={togglePreviewFollow}>
                       <Text style={styles.followButtonText}>{previewFollowing ? 'Unfollow' : 'Follow'}</Text>
                     </TouchableOpacity>
                   ) : null}
-                  <ScrollView contentContainerStyle={{ gap: 10 }}>
+                  <ScrollView contentContainerStyle={{ paddingVertical: 8 }}>
                     {previewUploads.length === 0 ? (
                       <Text style={styles.muted}>No uploads yet.</Text>
                     ) : (
-                      previewUploads.map((it) => (
-                        <View key={it.id} style={styles.commentBubble}>
-                          <Text style={styles.commentAuthor}>{it.title}</Text>
-                          {it.mediaType === 'video' ? (
-                            <Video source={{ uri: it.mediaUrl }} style={{ width: '100%', height: 200 }} useNativeControls />
-                          ) : (
-                            <Image source={{ uri: it.mediaUrl }} style={{ width: '100%', height: 200, borderRadius: 10 }} />
-                          )}
-                        </View>
-                      ))
+                      <View style={styles.previewGrid}>
+                        {previewUploads.map((it) => (
+                          <View key={it.id} style={styles.previewGridItem}>
+                            {it.mediaType === 'video' ? (
+                              <TouchableOpacity
+                                style={styles.previewGridMedia}
+                                activeOpacity={0.85}
+                                onPress={() => {
+                                  const ref = forumPreviewVideoRefs.current[it.id];
+                                  ref?.presentFullscreenPlayer?.();
+                                  ref?.playAsync?.();
+                                }}
+                              >
+                                {forumPreviewLoading ? (
+                                  <ActivityIndicator color={theme.secondary} />
+                                ) : (
+                                  <Ionicons name="play-circle" size={42} color="#fff" style={{ position: 'absolute', zIndex: 2 }} />
+                                )}
+                                <Video
+                                  ref={(r) => {
+                                    if (r) forumPreviewVideoRefs.current[it.id] = r;
+                                    else delete forumPreviewVideoRefs.current[it.id];
+                                  }}
+                                  source={{ uri: it.mediaUrl }}
+                                  style={styles.previewGridMedia}
+                                  resizeMode="cover"
+                                  shouldPlay={false}
+                                  isMuted
+                                  usePoster
+                                  posterSource={it.mediaUrl ? { uri: it.mediaUrl } : undefined}
+                                  onLoadStart={() => setForumPreviewLoading(true)}
+                                  onReadyForDisplay={() => setForumPreviewLoading(false)}
+                                  onError={() => setForumPreviewLoading(false)}
+                                />
+                              </TouchableOpacity>
+                            ) : (
+                              <Image source={{ uri: it.mediaUrl }} style={styles.previewGridMedia} />
+                            )}
+                            <Text numberOfLines={1} style={styles.previewGridTitle}>
+                              {it.title}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
                     )}
                   </ScrollView>
                   <TouchableOpacity
                     style={styles.previewClose}
-                    onPress={() => setPreviewState({ visible: false, handle: null })}
-                  >
+                  onPress={() => {
+                    setForumPreviewLoading(false);
+                    setPreviewState({ visible: false, handle: null });
+                  }}
+                >
                     <Text style={styles.previewCloseText}>Close</Text>
                   </TouchableOpacity>
                 </View>
@@ -1783,22 +2470,80 @@ const formatCount = (count) => {
   return String(count);
 };
 
+const formatTimeAgo = (ts) => {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const days = Math.floor(hr / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 4) return `${weeks}w ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.floor(days / 365);
+  return `${years}y ago`;
+};
+
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState('@guest');
+  const [userEmail, setUserEmail] = useState('');
+  const [userUid, setUserUid] = useState('');
   const [authVisible, setAuthVisible] = useState(false);
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
   const [authEmail, setAuthEmail] = useState('');
+  const [authUsername, setAuthUsername] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authConfirm, setAuthConfirm] = useState('');
-  const [storedAccount, setStoredAccount] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
   const db = useMemo(() => getDb(), []);
+  const auth = useMemo(() => getAuthInstance(), []);
 
   const resetAuthFields = useCallback(() => {
     setAuthEmail('');
+    setAuthUsername('');
     setAuthPassword('');
     setAuthConfirm('');
   }, []);
+
+  const deriveHandle = useCallback((email, displayName) => {
+    const base = (displayName || email || 'fan').split('@')[0].replace(/[^\w]/g, '') || 'fan';
+    return `@${base.slice(0, 20)}`;
+  }, []);
+
+  useEffect(() => {
+    if (!auth) return undefined;
+    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        const uid = fbUser.uid || '';
+        let handle = deriveHandle(fbUser.email || '', fbUser.displayName || '');
+        const emailVal = fbUser.email || '';
+        if (db && uid) {
+          try {
+            const uSnap = await getDoc(doc(db, 'users', uid));
+            if (uSnap.exists()) {
+              const data = uSnap.data();
+              handle = data.handle || handle;
+            }
+          } catch (err) {
+            console.warn('Load user handle failed', err);
+          }
+        }
+        setUser(handle);
+        setUserEmail(emailVal);
+        setUserUid(uid);
+      } else {
+        setUser('@guest');
+        setUserEmail('');
+        setUserUid('');
+      }
+    });
+    return () => unsub();
+  }, [auth, deriveHandle]);
 
   const completeAuth = useCallback(async () => {
     if (authLoading) return;
@@ -1814,41 +2559,57 @@ const AuthProvider = ({ children }) => {
       Alert.alert('Passwords do not match', 'Please re-enter matching passwords.');
       return;
     }
+    if (authMode === 'signup') {
+      const slug = (authUsername || '').trim().toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '').slice(0, 24);
+      if (!slug) {
+        Alert.alert('Username required', 'Choose a username (letters/numbers, no spaces).');
+        return;
+      }
+    }
+    if (!auth) {
+      Alert.alert('Firebase not configured', 'Cannot authenticate without Firebase app setup.');
+      return;
+    }
 
     const emailNorm = authEmail.trim().toLowerCase();
-    const handle = `@${emailNorm.split('@')[0] || 'fan'}`;
+    const password = authPassword.trim();
+    const rawName = (authUsername || '').trim();
+    const slug = rawName ? rawName.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '').slice(0, 24) : '';
+    const handle = authMode === 'signup' ? `@${slug}` : deriveHandle(emailNorm, '');
 
     setAuthLoading(true);
 
     if (authMode === 'signup') {
       try {
-        if (db) {
-          const existing = await getDoc(doc(db, 'users', emailNorm));
-          if (existing.exists()) {
-            Alert.alert('Email in use', 'This email is already registered. Please log in instead.');
-            setAuthLoading(false);
-            return;
-          }
-        }
+        const cred = await createUserWithEmailAndPassword(auth, emailNorm, password);
+        try {
+          await updateProfile(cred.user, { displayName: handle });
+        } catch {}
         if (db) {
           await setDoc(
-            doc(db, 'users', emailNorm),
+            doc(db, 'users', cred.user.uid),
             {
               email: emailNorm,
-              password: authPassword.trim(),
               handle,
+              username: rawName,
+              avatarUrl: cred.user.photoURL || '',
               createdAt: serverTimestamp(),
             },
             { merge: true }
           );
         }
-        setStoredAccount({ email: emailNorm, password: authPassword.trim(), handle });
         setUser(handle);
+        setUserEmail(emailNorm);
         setAuthVisible(false);
         resetAuthFields();
       } catch (err) {
-        console.warn('Signup save failed', err);
-        Alert.alert('Signup failed', 'Could not save user. Check connection and rules.');
+        console.warn('Signup failed', err);
+        const code = err?.code || '';
+        if (code.includes('email-already-in-use')) {
+          Alert.alert('Email in use', 'This email is already registered. Please log in instead.');
+        } else {
+          Alert.alert('Signup failed', 'Could not sign up. Please try again.');
+        }
       } finally {
         setAuthLoading(false);
       }
@@ -1857,37 +2618,33 @@ const AuthProvider = ({ children }) => {
 
     if (authMode === 'login') {
       try {
+        const cred = await signInWithEmailAndPassword(auth, emailNorm, password);
+        let h = deriveHandle(cred.user.email || emailNorm, cred.user.displayName || '');
         if (db) {
-          const snap = await getDoc(doc(db, 'users', emailNorm));
-          if (snap.exists()) {
-            const data = snap.data();
-            if (data.password === authPassword.trim()) {
-              setUser(data.handle || handle);
-              setAuthVisible(false);
-              resetAuthFields();
-              setAuthLoading(false);
-              return;
-            }
+          const uSnap = await getDoc(doc(db, 'users', cred.user.uid));
+          if (uSnap.exists()) {
+            h = uSnap.data()?.handle || h;
           }
         }
-        // fallback to local
-        const matchesEmail = storedAccount?.email === emailNorm;
-        const matchesPass = storedAccount?.password === authPassword.trim();
-        if (matchesEmail && matchesPass) {
-          setUser(storedAccount.handle || handle);
-          setAuthVisible(false);
-          resetAuthFields();
-        } else {
-          Alert.alert('Login failed', 'Email or password is incorrect.');
+        if (db) {
+          await setDoc(
+            doc(db, 'users', cred.user.uid),
+            { email: emailNorm, handle: h, lastLogin: serverTimestamp(), avatarUrl: cred.user.photoURL || '' },
+            { merge: true }
+          );
         }
+        setUser(h);
+        setUserEmail(emailNorm);
+        setAuthVisible(false);
+        resetAuthFields();
       } catch (err) {
         console.warn('Login failed', err);
-        Alert.alert('Login failed', 'Check connection and try again.');
+        Alert.alert('Login failed', 'Email or password is incorrect.');
       } finally {
         setAuthLoading(false);
       }
     }
-  }, [authConfirm, authEmail, authMode, authPassword, authLoading, db, resetAuthFields, storedAccount]);
+  }, [auth, authConfirm, authEmail, authMode, authPassword, authLoading, db, deriveHandle, resetAuthFields]);
 
   const login = useCallback(() => {
     setAuthMode('login');
@@ -1899,10 +2656,37 @@ const AuthProvider = ({ children }) => {
     setAuthVisible(true);
   }, []);
 
-  const logout = useCallback(() => {
-    setUser('@guest');
-    resetAuthFields();
-  }, []);
+  const logout = useCallback(async () => {
+    try {
+      if (auth) await signOut(auth);
+    } catch (err) {
+      console.warn('Sign out failed', err);
+    } finally {
+      setUser('@guest');
+      setUserEmail('');
+      setUserUid('');
+      resetAuthFields();
+      setAuthVisible(false);
+    }
+  }, [auth, resetAuthFields]);
+
+  const deleteAccount = useCallback(async () => {
+    if (!auth?.currentUser) {
+      Alert.alert('Not signed in', 'Please log in first.');
+      return;
+    }
+    try {
+      await deleteUser(auth.currentUser);
+      setUser('@guest');
+      setUserEmail('');
+      setUserUid('');
+      resetAuthFields();
+      setAuthVisible(false);
+    } catch (err) {
+      console.warn('Delete failed', err);
+      Alert.alert('Delete failed', 'Please re-login and try deleting again.');
+    }
+  }, [auth, resetAuthFields]);
 
   const requireAuth = useCallback(() => {
     setAuthMode('login');
@@ -1910,7 +2694,7 @@ const AuthProvider = ({ children }) => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, requireAuth }}>
+    <AuthContext.Provider value={{ user, userEmail, userUid, login, signup, logout, deleteAccount, requireAuth }}>
       {children}
       <Modal visible={authVisible} transparent animationType="fade" onRequestClose={() => setAuthVisible(false)}>
         <TouchableWithoutFeedback onPress={() => setAuthVisible(false)}>
@@ -1924,6 +2708,16 @@ const AuthProvider = ({ children }) => {
                 <View style={styles.authModalCard}>
                   <Text style={styles.panelTitle}>{authMode === 'signup' ? 'Sign up' : 'Log in'}</Text>
                   <Text style={styles.muted}>Enter your email and password.</Text>
+                  {authMode === 'signup' ? (
+                    <TextInput
+                      style={styles.authInput}
+                      value={authUsername}
+                      onChangeText={setAuthUsername}
+                      placeholder="username (no spaces)"
+                      placeholderTextColor={theme.muted}
+                      autoCapitalize="none"
+                    />
+                  ) : null}
                   <TextInput
                     style={styles.authInput}
                     value={authEmail}
@@ -1978,6 +2772,11 @@ export default function App() {
   const [dragX, setDragX] = useState(0);
   const animatedTransition = useRef(new Animated.Value(0)).current;
   const [hideTabBar, setHideTabBar] = useState(false);
+
+  useEffect(() => {
+    // Preload splash asset to avoid initial flash
+    Asset.fromModule(splashLogo).downloadAsync().catch(() => {});
+  }, []);
 
   const handleSwipe = useCallback(
     (dx, vx) => {
@@ -2514,6 +3313,16 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '90%',
   },
+  playOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
   previewClose: {
     marginTop: 12,
     paddingHorizontal: 16,
@@ -2524,6 +3333,29 @@ const styles = StyleSheet.create({
   previewCloseText: {
     color: '#ffffff',
     fontWeight: '700',
+  },
+  previewGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -6,
+  },
+  previewGridItem: {
+    width: '50%',
+    padding: 6,
+    backgroundColor: 'transparent',
+  },
+  previewGridMedia: {
+    width: '100%',
+    aspectRatio: 1,
+    backgroundColor: '#0f172a',
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  previewGridTitle: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontWeight: '700',
+    color: theme.text,
   },
   forumDetailContainer: {
     flex: 1,
